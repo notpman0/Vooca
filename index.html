@@ -1,0 +1,2416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Vocab Master</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = { darkMode: ["selector", '[data-theme="dark"]'] };
+</script>
+<style>
+  :root[data-theme="dark"] {
+    --bg:#0d1117; --surface:#11161f; --surface2:#0a0e14;
+    --text:#f1f5f9; --text-dim:#cbd5e1; --text-faint:#94a3b8;
+    --border: rgba(255,255,255,0.12); --accent-text:#6ee7b7;
+  }
+  :root[data-theme="light"] {
+    --bg:#f4f6f8; --surface:#ffffff; --surface2:#eef1f5;
+    --text:#0f172a; --text-dim:#334155; --text-faint:#55627a;
+    --border: rgba(15,23,42,0.12); --accent-text:#047857;
+  }
+  html, body { background:var(--bg); font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  ::placeholder { color: var(--text-faint); }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/jsx" id="app-source">
+const { useState, useEffect, useRef, useMemo } = React;
+if (window.pdfjsLib) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+}
+
+/* ---------------- Icons ---------------- */
+const Icon = ({ path, size = 16, className = "", strokeWidth = 2, viewBox = "0 0 24 24" }) => (
+  <svg width={size} height={size} viewBox={viewBox} fill="none" stroke="currentColor"
+    strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}
+    dangerouslySetInnerHTML={{ __html: path }} />
+);
+const LayoutDashboard = (p) => <Icon {...p} path='<rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/>' />;
+const Layers = (p) => <Icon {...p} path='<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>' />;
+const PenLine = (p) => <Icon {...p} path='<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>' />;
+const Sparkles = (p) => <Icon {...p} path='<path d="M12 3v3M12 18v3M5.6 5.6l2 2M16.4 16.4l2 2M3 12h3M18 12h3M5.6 18.4l2-2M16.4 7.6l2-2"/><path d="M12 8l1.2 2.8L16 12l-2.8 1.2L12 16l-1.2-2.8L8 12l2.8-1.2Z"/>' />;
+const Key = (p) => <Icon {...p} path='<circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6M15.5 7.5L18 10M12.5 10.5L15 13"/>' />;
+const Check = (p) => <Icon {...p} path='<polyline points="20 6 9 17 4 12"/>' />;
+const X = (p) => <Icon {...p} path='<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>' />;
+const Plus = (p) => <Icon {...p} path='<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>' />;
+const Flame = (p) => <Icon {...p} path='<path d="M8.5 14.5A2.5 2.5 0 0 0 11 17a2.5 2.5 0 0 0 2.5-2.5c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7.5 7.5 0 1 1-15 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5Z"/>' />;
+const BookOpen = (p) => <Icon {...p} path='<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2Z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7Z"/>' />;
+const Trophy = (p) => <Icon {...p} path='<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0Z"/><path d="M17 5h3a3 3 0 0 1-3 5M7 5H4a3 3 0 0 0 3 5"/>' />;
+const AlertTriangle = (p) => <Icon {...p} path='<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>' />;
+const Trash2 = (p) => <Icon {...p} path='<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>' />;
+const ArrowLeft = (p) => <Icon {...p} path='<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>' />;
+const Loader2 = (p) => <Icon {...p} path='<path d="M21 12a9 9 0 1 1-6.219-8.56"/>' />;
+const ShieldCheck = (p) => <Icon {...p} path='<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><polyline points="9 12 11 14 15 10"/>' />;
+const ShieldAlert = (p) => <Icon {...p} path='<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="16" x2="12.01" y2="16"/>' />;
+const ChevronRight = (p) => <Icon {...p} path='<polyline points="9 18 15 12 9 6"/>' />;
+const ChevronLeft = (p) => <Icon {...p} path='<polyline points="15 18 9 12 15 6"/>' />;
+const Quote = (p) => <Icon {...p} path='<path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 0-1 0"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 0-1 0"/>' />;
+const Settings = (p) => <Icon {...p} path='<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>' />;
+const Sun = (p) => <Icon {...p} path='<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>' />;
+const Moon = (p) => <Icon {...p} path='<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/>' />;
+const Monitor = (p) => <Icon {...p} path='<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>' />;
+const Upload = (p) => <Icon {...p} path='<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>' />;
+const Award = (p) => <Icon {...p} path='<circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/>' />;
+const Target = (p) => <Icon {...p} path='<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>' />;
+const Zap = (p) => <Icon {...p} path='<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>' />;
+const GraduationCap = (p) => <Icon {...p} path='<path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1.5 2.5 3 6 3s6-1.5 6-3v-5"/><path d="M22 10v6"/>' />;
+const FileText = (p) => <Icon {...p} path='<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/>' />;
+const BrandMark = (p) => <Icon {...p} path='<path d="M12 7c-2-1.6-4.7-2.4-7.5-2.4v12.8c2.8 0 5.5.8 7.5 2.4 2-1.6 4.7-2.4 7.5-2.4V4.6C16.7 4.6 14 5.4 12 7Z"/><path d="M12 7v12.8"/><path d="M19.3 2.2l.5 1.3 1.3.5-1.3.5-.5 1.3-.5-1.3-1.3-.5 1.3-.5.5-1.3Z" fill="currentColor" stroke="none"/>' />;
+
+/* ---------------- Storage ---------------- */
+const LS = {
+  key: "vcw_apiKey", model: "vcw_model", theme: "vcw_theme",
+  lists: "vcw_lists", activeList: "vcw_activeList",
+  stats: "vcw_stats", streak: "vcw_streak", learnStyles: "vcw_learnStyles", learnMode: "vcw_learnMode",
+  account: "vcw_account", loggedIn: "vcw_loggedIn",
+};
+const LEARN_STYLES = [
+  { id: "reveal", label: "Recall first", desc: "See the word, try to recall its meaning, then reveal." },
+  { id: "context", label: "Context clues", desc: "Guess the word from a sentence with a blank." },
+  { id: "story", label: "Read & remember", desc: "Straight read: definition, examples, collocations." },
+];
+const MODELS = [
+  { id: "claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet" },
+  { id: "claude-3-5-haiku-20241022", label: "Claude 3.5 Haiku" },
+  { id: "claude-3-opus-20240229", label: "Claude 3 Opus" },
+];
+const VIBE_EMOJI = { formal: "💼", academic: "🎓", casual: "💬", literary: "📖" };
+const LEITNER_DAYS = [0, 1, 2, 4, 7, 14, 30];
+
+const load = (k, fallback) => {
+  try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; }
+  catch { return fallback; }
+};
+const save = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+const todayStr = () => new Date().toISOString().slice(0, 10);
+const addDays = (base, n) => new Date(Date.parse(base) + n * 86400000).toISOString().slice(0, 10);
+let __idCounter = 0;
+const genId = () => (window.crypto && crypto.randomUUID)
+  ? crypto.randomUUID()
+  : `id-${Date.now()}-${__idCounter++}-${Math.random().toString(36).slice(2, 8)}`;
+const freshWord = (w) => ({ id: genId(), box: 0, due: null, seen: false, learnedOn: null, wrongCount: 0, correctCount: 0, memRate: 0, memStarted: false, ...w });
+
+function repairListIds(lists) {
+  const seen = new Set();
+  return lists.map((l) => ({
+    ...l,
+    words: l.words.map((w) => {
+      if (w.id != null && !seen.has(w.id)) { seen.add(w.id); return w; }
+      const id = genId();
+      seen.add(id);
+      return { ...w, id };
+    }),
+  }));
+}
+
+const buildExamples = (word) => {
+  const coll = (word.coll || "").split(",").map((c) => c.trim()).filter(Boolean);
+  const w = word.word.toLowerCase();
+  const out = [
+    `As the report noted, the ${w} approach proved essential${coll[0] ? ` — a ${word.vibe} choice that paired naturally with "${coll[0]}."` : "."}`,
+    coll[1] ? `Critics praised the ${coll[1]}, calling it a masterclass in ${w} thinking.` : `Few people used the word "${word.word}" as precisely as she did.`,
+    coll[2] ? `Nobody expected the ${coll[2]} to shift so fast, yet it stayed remarkably ${w}.` : `It takes practice to sound natural using "${word.word}" in conversation.`,
+  ];
+  return out;
+};
+
+/* ---------------- Seed data ---------------- */
+const SEED_WORDS = [
+  { id: 1, word: "Meticulous", def: "Showing great attention to detail; very careful and precise.", vibe: "formal", coll: "meticulous planning, meticulous record, meticulously crafted" },
+  { id: 2, word: "Paradigm", def: "A typical example or pattern of something; a model or framework.", vibe: "academic", coll: "paradigm shift, dominant paradigm, new paradigm" },
+  { id: 3, word: "Mitigate", def: "To make less severe, serious, or painful.", vibe: "formal", coll: "mitigate risk, mitigate the impact, mitigate damage" },
+  { id: 4, word: "Ubiquitous", def: "Present, appearing, or found everywhere.", vibe: "academic", coll: "ubiquitous presence, become ubiquitous, ubiquitous technology" },
+  { id: 5, word: "Ephemeral", def: "Lasting for a very short time; fleeting.", vibe: "literary", coll: "ephemeral beauty, ephemeral moment, ephemeral nature" },
+].map(freshWord);
+
+const OFFICIAL_LISTS = {
+  toefl: {
+    name: "TOEFL Core",
+    words: [
+      { word: "Abundant", def: "Existing in large quantities; plentiful.", vibe: "academic", coll: "abundant resources, abundant evidence, abundant supply" },
+      { word: "Coherent", def: "Logical and consistent; easy to follow.", vibe: "academic", coll: "coherent argument, coherent structure, coherent policy" },
+      { word: "Derive", def: "To obtain or trace something from a source.", vibe: "academic", coll: "derive from, derive a formula, derive satisfaction" },
+      { word: "Fluctuate", def: "To rise and fall irregularly in number or amount.", vibe: "academic", coll: "fluctuate wildly, prices fluctuate, fluctuate over time" },
+      { word: "Hypothesis", def: "A proposed explanation made on limited evidence, to be tested further.", vibe: "academic", coll: "test a hypothesis, form a hypothesis, null hypothesis" },
+      { word: "Inevitable", def: "Certain to happen; unavoidable.", vibe: "formal", coll: "inevitable outcome, inevitable decline, seem inevitable" },
+      { word: "Notion", def: "A general idea or belief about something.", vibe: "academic", coll: "the notion that, challenge the notion, popular notion" },
+      { word: "Plausible", def: "Seeming reasonable or probable.", vibe: "academic", coll: "plausible explanation, plausible theory, more plausible" },
+      { word: "Subsequent", def: "Coming after something in time; following.", vibe: "formal", coll: "subsequent events, subsequent research, subsequent to" },
+      { word: "Substantial", def: "Of considerable importance, size, or worth.", vibe: "formal", coll: "substantial evidence, substantial increase, substantial amount" },
+      { word: "Comprehensive", def: "Complete and including everything that is necessary.", vibe: "formal", coll: "comprehensive review, comprehensive plan, comprehensive study" },
+      { word: "Contradict", def: "To assert the opposite of a statement made by someone else.", vibe: "formal", coll: "contradict evidence, contradict himself, seem to contradict" },
+      { word: "Explicit", def: "Stated clearly and in detail, leaving no room for confusion.", vibe: "formal", coll: "explicit instructions, explicit consent, made explicit" },
+      { word: "Facilitate", def: "To make an action or process easier.", vibe: "formal", coll: "facilitate learning, facilitate communication, facilitate growth" },
+      { word: "Intrinsic", def: "Belonging naturally; essential.", vibe: "academic", coll: "intrinsic value, intrinsic motivation, intrinsic to" },
+    ],
+  },
+  sat: {
+    name: "SAT Essential",
+    words: [
+      { word: "Ambivalent", def: "Having mixed feelings or contradictory ideas about something.", vibe: "literary", coll: "ambivalent about, ambivalent feelings, remain ambivalent" },
+      { word: "Candid", def: "Truthful and straightforward; frank.", vibe: "formal", coll: "candid opinion, candid discussion, remarkably candid" },
+      { word: "Deference", def: "Humble submission and respect shown to someone.", vibe: "formal", coll: "defer to, show deference, out of deference" },
+      { word: "Eloquent", def: "Fluent and persuasive in speaking or writing.", vibe: "literary", coll: "eloquent speech, eloquent defense, eloquent writer" },
+      { word: "Frugal", def: "Sparing or economical with money or resources.", vibe: "casual", coll: "frugal lifestyle, frugal shopper, notoriously frugal" },
+      { word: "Impartial", def: "Treating all sides equally; not biased.", vibe: "formal", coll: "impartial judge, remain impartial, impartial review" },
+      { word: "Lethargic", def: "Sluggish and lacking energy or enthusiasm.", vibe: "casual", coll: "feel lethargic, lethargic mood, grow lethargic" },
+      { word: "Meager", def: "Lacking in quantity or quality; scanty.", vibe: "literary", coll: "meager income, meager portion, meager results" },
+      { word: "Novice", def: "A person new to and inexperienced in a field.", vibe: "casual", coll: "complete novice, novice player, novice mistake" },
+      { word: "Obscure", def: "Not well known; hard to understand or perceive.", vibe: "literary", coll: "obscure reference, remain obscure, obscure the truth" },
+      { word: "Pragmatic", def: "Dealing with things sensibly and realistically.", vibe: "formal", coll: "pragmatic approach, pragmatic solution, purely pragmatic" },
+      { word: "Resilient", def: "Able to recover quickly from difficulties.", vibe: "formal", coll: "resilient economy, emotionally resilient, remain resilient" },
+      { word: "Skeptical", def: "Not easily convinced; having doubts.", vibe: "casual", coll: "skeptical of, remain skeptical, deeply skeptical" },
+      { word: "Tenuous", def: "Very weak or slight; barely sufficient.", vibe: "academic", coll: "tenuous connection, tenuous argument, tenuous link" },
+      { word: "Zealous", def: "Having great energy or enthusiasm for a cause.", vibe: "literary", coll: "zealous supporter, zealous advocate, zealous reformer" },
+    ],
+  },
+  ielts: {
+    name: "IELTS Academic",
+    words: [
+      { word: "Advocate", def: "To publicly recommend or support a cause or policy.", vibe: "formal", coll: "advocate for, strong advocate, advocate change" },
+      { word: "Constitute", def: "To be a part of a whole; to form or make up.", vibe: "formal", coll: "constitute a majority, constitute evidence, what constitutes" },
+      { word: "Denote", def: "To indicate or signify something.", vibe: "academic", coll: "denote a meaning, symbol denotes, denote the presence" },
+      { word: "Empirical", def: "Based on observation or experience rather than theory.", vibe: "academic", coll: "empirical evidence, empirical study, empirical data" },
+      { word: "Feasible", def: "Possible to do easily or conveniently.", vibe: "formal", coll: "feasible solution, economically feasible, remain feasible" },
+      { word: "Implicit", def: "Implied though not plainly expressed.", vibe: "academic", coll: "implicit assumption, implicit bias, implicit in" },
+      { word: "Inherent", def: "Existing as a natural or basic part of something.", vibe: "academic", coll: "inherent risk, inherent value, inherent in" },
+      { word: "Prevalent", def: "Widespread in a particular area or at a particular time.", vibe: "formal", coll: "prevalent among, increasingly prevalent, remain prevalent" },
+      { word: "Rigorous", def: "Extremely thorough and careful.", vibe: "academic", coll: "rigorous testing, rigorous analysis, academically rigorous" },
+      { word: "Underlying", def: "The true, basic nature of something, often hidden.", vibe: "academic", coll: "underlying cause, underlying assumption, underlying issue" },
+      { word: "Viable", def: "Capable of working successfully; feasible.", vibe: "formal", coll: "viable option, economically viable, commercially viable" },
+      { word: "Diverse", def: "Showing a great deal of variety.", vibe: "formal", coll: "diverse range, culturally diverse, increasingly diverse" },
+    ],
+  },
+};
+
+function suggestPlan(total) {
+  if (total <= 10) return null;
+  const newPerDay = Math.min(15, Math.max(3, Math.ceil(total / 14)));
+  const reviewPerDay = Math.min(30, Math.max(5, newPerDay * 2));
+  return { newPerDay, reviewPerDay };
+}
+function getLearnPool(list) {
+  const unseen = list.words.filter((w) => !w.seen);
+  const cap = list.plan ? list.plan.newPerDay : Math.min(8, unseen.length || 8);
+  return unseen.slice(0, cap);
+}
+function getMemorizePool(list) {
+  const unfinished = list.words.filter((w) => (w.memRate || 0) < 100);
+  const planned = list.plan && Number.isFinite(list.plan.newPerDay) ? list.plan.newPerDay : 0;
+  const cap = Math.max(5, planned || 10);
+  return unfinished.slice(0, cap);
+}
+
+function projectPlanForDate(list, dateStr) {
+  const today = todayStr();
+  if (!list) return { kind: dateStr <= today ? "past" : "future", plan: null };
+  const plan = list.plan;
+  if (dateStr <= today) return { kind: "past", plan, goal: plan?.newPerDay ?? null };
+  if (!plan) return { kind: "future", plan: null };
+  const unseenTotal = list.words.filter((w) => !w.seen).length;
+  const dayOffset = Math.round((Date.parse(dateStr) - Date.parse(today)) / 86400000);
+  const introducedBeforeThisDay = Math.min(unseenTotal, plan.newPerDay * Math.max(0, dayOffset - 1));
+  const remainingAtStart = Math.max(0, unseenTotal - introducedBeforeThisDay);
+  const newCount = Math.min(plan.newPerDay, remainingAtStart);
+  const anyLearnedYet = list.words.some((w) => w.seen);
+  const reviewCount = (anyLearnedYet || introducedBeforeThisDay > 0) ? plan.reviewPerDay : 0;
+  return { kind: "future", plan, newCount, reviewCount };
+}
+function getTodayPool(list) {
+  const words = list.words;
+  if (!list.plan) return words;
+  const today = todayStr();
+  const dueReview = words.filter((w) => w.seen && (!w.due || w.due <= today)).slice(0, list.plan.reviewPerDay);
+  const newOnes = words.filter((w) => !w.seen).slice(0, list.plan.newPerDay);
+  const pool = [...newOnes, ...dueReview];
+  return pool.length ? pool : words.filter((w) => w.seen).slice(0, 10);
+}
+
+/* ---------------- Auth gate ---------------- */
+function AuthGate({ onAuth }) {
+  const [account] = useState(() => load(LS.account, null));
+  const [mode, setMode] = useState(account ? "login" : "register");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState(null);
+
+  const submit = (e) => {
+    e.preventDefault();
+    setError(null);
+    if (mode === "register") {
+      if (!name.trim() || !email.trim() || !password) { setError("Fill in every field to create your account."); return; }
+      const acc = { name: name.trim(), email: email.trim().toLowerCase(), password };
+      save(LS.account, acc);
+      save(LS.loggedIn, true);
+      onAuth();
+      return;
+    }
+    if (!account) { setError("No account on this device yet — create one first."); setMode("register"); return; }
+    if (email.trim().toLowerCase() !== account.email || password !== account.password) {
+      setError("Incorrect email or password.");
+      return;
+    }
+    save(LS.loggedIn, true);
+    onAuth();
+  };
+
+  return (
+    <div className="min-h-screen w-full flex items-center justify-center bg-[color:var(--bg)] px-6"
+      style={{ fontFamily: "'Inter', ui-sans-serif, system-ui" }}>
+      <div className="w-full max-w-sm">
+        <div className="flex flex-col items-center mb-8">
+          <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 flex items-center justify-center shadow-sm shadow-violet-500/30 mb-3">
+            <BrandMark size={24} className="text-white" />
+          </div>
+          <h1 className="text-lg font-semibold text-[color:var(--text)]">Vocab Master</h1>
+          <p className="text-xs text-[color:var(--text-dim)] mt-0.5">Learn it. Own it.</p>
+        </div>
+
+        <div className="rounded-2xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-6 shadow-lg">
+          <div className="flex rounded-lg bg-[color:var(--surface2)] p-1 mb-5">
+            <button type="button" onClick={() => { setMode("login"); setError(null); }}
+              className={`flex-1 py-1.5 rounded-md text-sm font-medium transition ${mode === "login" ? "bg-[color:var(--surface)] text-[color:var(--text)] shadow-sm" : "text-[color:var(--text-faint)]"}`}>
+              Log in
+            </button>
+            <button type="button" onClick={() => { setMode("register"); setError(null); }}
+              className={`flex-1 py-1.5 rounded-md text-sm font-medium transition ${mode === "register" ? "bg-[color:var(--surface)] text-[color:var(--text)] shadow-sm" : "text-[color:var(--text-faint)]"}`}>
+              Register
+            </button>
+          </div>
+
+          <form onSubmit={submit} className="space-y-3">
+            {mode === "register" && (
+              <div>
+                <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Name</label>
+                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ada Lovelace"
+                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+              </div>
+            )}
+            <div>
+              <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Email</label>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com"
+                className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+            </div>
+            <div>
+              <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Password</label>
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••"
+                className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+            </div>
+            {error && <p className="text-[11px] text-rose-700 dark:text-rose-300">{error}</p>}
+            <button type="submit"
+              className="w-full py-2.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 transition">
+              {mode === "register" ? "Create account" : "Log in"}
+            </button>
+          </form>
+        </div>
+        <p className="text-[11px] text-[color:var(--text-faint)] text-center mt-4 leading-relaxed">
+          This is a local profile only — stored in this browser, not on a server. There's no real account security here, just a personal space for your progress.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- App ---------------- */
+function App({ onLogout }) {
+  const [view, setView] = useState("dashboard");
+  const [apiKey, setApiKey] = useState(() => load(LS.key, ""));
+  const [model, setModel] = useState(() => load(LS.model, MODELS[0].id));
+  const [theme, setTheme] = useState(() => load(LS.theme, "dark"));
+  const [lists, setLists] = useState(() => load(LS.lists, [
+    { id: "default", name: "My Words", source: "custom", plan: null, createdAt: Date.now(), words: SEED_WORDS },
+  ]));
+  const [activeListId, setActiveListId] = useState(() => load(LS.activeList, "default"));
+  const [stats, setStats] = useState(() => load(LS.stats, { sessions: 0, dailyLearned: {} }));
+  const [streak, setStreak] = useState(() => load(LS.streak, { count: 0, last: null }));
+  const [detailWord, setDetailWord] = useState(null);
+  const [showKeyModal, setShowKeyModal] = useState(false);
+
+  useEffect(() => save(LS.key, apiKey), [apiKey]);
+  useEffect(() => save(LS.model, model), [model]);
+  useEffect(() => save(LS.theme, theme), [theme]);
+  useEffect(() => save(LS.lists, lists), [lists]);
+  useEffect(() => save(LS.activeList, activeListId), [activeListId]);
+  useEffect(() => save(LS.stats, stats), [stats]);
+  useEffect(() => save(LS.streak, streak), [streak]);
+
+  useEffect(() => {
+    const apply = () => {
+      const eff = theme === "system"
+        ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+        : theme;
+      document.documentElement.setAttribute("data-theme", eff);
+    };
+    apply();
+    if (theme === "system") {
+      const mq = window.matchMedia("(prefers-color-scheme: dark)");
+      mq.addEventListener("change", apply);
+      return () => mq.removeEventListener("change", apply);
+    }
+  }, [theme]);
+
+  const activeList = useMemo(() => lists.find((l) => l.id === activeListId) || lists[0], [lists, activeListId]);
+  useEffect(() => { if (activeList && activeList.id !== activeListId) setActiveListId(activeList.id); }, [activeList]);
+
+  const allWords = useMemo(() => lists.flatMap((l) => l.words), [lists]);
+  const totalIntroduced = allWords.filter((w) => w.seen).length;
+  const totalMastered = allWords.filter((w) => w.box >= 5).length;
+  const todayLearned = (stats.dailyLearned || {})[todayStr()] || 0;
+  const learnPending = activeList ? getLearnPool(activeList).length : 0;
+
+  const updateList = (id, updater) => setLists((ls) => ls.map((l) => (l.id === id ? updater(l) : l)));
+
+  const registerActivity = () => {
+    const t = todayStr();
+    setStreak((s) => {
+      if (s.last === t) return s;
+      const yest = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      const count = s.last === yest ? s.count + 1 : 1;
+      return { count, last: t };
+    });
+  };
+
+  const openDetail = (listId, wordId) => setDetailWord({ listId, wordId });
+
+  const nav = [
+    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "lists", label: "Word Lists", sub: "库", icon: BookOpen },
+    { id: "deck", label: "Vocab Deck", sub: "背", icon: Layers },
+    { id: "learn", label: "Learn", sub: "学", icon: GraduationCap },
+    { id: "quiz", label: "Quick Test", sub: "测", icon: Zap },
+    { id: "sandbox", label: "Practice Sandbox", sub: "写", icon: PenLine },
+    { id: "settings", label: "Settings", icon: Settings },
+  ];
+
+  return (
+    <div className="min-h-screen w-full flex bg-[color:var(--bg)] text-[color:var(--text)] font-sans"
+      style={{ fontFamily: "'Inter', ui-sans-serif, system-ui" }}>
+      <aside className="w-60 shrink-0 border-r border-[color:var(--border)] bg-[color:var(--surface2)] flex flex-col">
+        <div className="px-5 py-6 border-b border-[color:var(--border)]">
+          <div className="flex items-center gap-2.5">
+            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 flex items-center justify-center shadow-sm shadow-violet-500/30">
+              <BrandMark size={18} className="text-white" />
+            </div>
+            <div>
+              <h1 className="text-sm font-semibold tracking-tight text-[color:var(--text)] leading-tight">Vocab Master</h1>
+              <p className="text-[11px] text-[color:var(--text-dim)] tracking-wide">Learn it. Own it.</p>
+            </div>
+          </div>
+        </div>
+        <nav className="flex-1 px-3 py-4 space-y-1">
+          {nav.map((n) => {
+            const active = view === n.id && !detailWord;
+            return (
+              <button key={n.id} onClick={() => { setView(n.id); setDetailWord(null); }}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
+                  active ? "bg-emerald-500/15 text-[color:var(--accent-text)] ring-1 ring-emerald-400/30"
+                    : "text-[color:var(--text-dim)] hover:text-[color:var(--text)] hover:bg-white/5"}`}>
+                <n.icon size={17} />
+                <span className="flex-1 text-left">{n.label}</span>
+                {n.sub && <span className={`text-xs ${active ? "text-[color:var(--accent-text)]" : "text-[color:var(--text-faint)]"}`}>{n.sub}</span>}
+              </button>
+            );
+          })}
+        </nav>
+        <div className="px-4 py-4 border-t border-[color:var(--border)] space-y-2">
+          <div className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg bg-orange-500/10 text-orange-700 dark:text-orange-300">
+            <Flame size={14} /> {streak.count} day streak
+          </div>
+          <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg ${
+            apiKey ? "bg-emerald-500/10 text-[color:var(--accent-text)]" : "bg-amber-500/10 text-amber-700 dark:text-amber-300"}`}>
+            {apiKey ? <ShieldCheck size={14} /> : <ShieldAlert size={14} />}
+            {apiKey ? "API connected" : "No API key"}
+          </div>
+        </div>
+      </aside>
+
+      <main className="flex-1 overflow-y-auto h-screen">
+        {detailWord ? (
+          <WordDetailPage listId={detailWord.listId} wordId={detailWord.wordId} lists={lists} onBack={() => setDetailWord(null)} />
+        ) : (
+          <>
+            {view === "dashboard" && (
+              <Dashboard {...{ apiKey, masteredCount: totalMastered, totalIntroduced, todayLearned, stats, streak, activeList, learnPending, setView }} />
+            )}
+            {view === "lists" && (
+              <WordLists {...{ lists, setLists, activeListId, setActiveListId, apiKey, model }} />
+            )}
+            {view === "deck" && activeList && (
+              <Deck list={activeList} lists={lists} setActiveListId={setActiveListId} activeListId={activeListId}
+                updateList={updateList} onOpen={(w) => openDetail(activeList.id, w.id)} apiKey={apiKey} model={model} />
+            )}
+            {view === "learn" && activeList && (
+              <LearnView list={activeList} updateList={updateList} setStats={setStats} registerActivity={registerActivity}
+                onOpenDetail={openDetail} setView={setView} />
+            )}
+            {view === "quiz" && activeList && (
+              <QuizView list={activeList} allWords={allWords} updateList={updateList} setStats={setStats}
+                registerActivity={registerActivity} />
+            )}
+            {view === "sandbox" && activeList && (
+              <Sandbox {...{ words: activeList.words, apiKey, model, setStats, registerActivity, promptKey: () => setShowKeyModal(true) }} />
+            )}
+            {view === "settings" && (
+              <SettingsView {...{ apiKey, setApiKey, model, setModel, theme, setTheme, onLogout }} />
+            )}
+          </>
+        )}
+      </main>
+
+      {showKeyModal && (
+        <KeyModal onClose={() => setShowKeyModal(false)} onGo={() => { setShowKeyModal(false); setView("settings"); }} />
+      )}
+    </div>
+  );
+}
+
+/* ---------------- Calendar ---------------- */
+function pad2(n) { return String(n).padStart(2, "0"); }
+
+function CalendarHeatmap({ dailyLearned, activeList }) {
+  const now = new Date();
+  const [cursor, setCursor] = useState({ y: now.getFullYear(), m: now.getMonth() });
+  const [selectedDate, setSelectedDate] = useState(todayStr());
+  const monthLabel = new Date(cursor.y, cursor.m, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+
+  const firstDow = new Date(cursor.y, cursor.m, 1).getDay();
+  const daysInMonth = new Date(cursor.y, cursor.m + 1, 0).getDate();
+  const todayKey = todayStr();
+
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  const intensity = (count) => {
+    if (!count) return "bg-[color:var(--surface2)] text-[color:var(--text-faint)]";
+    if (count <= 2) return "bg-emerald-500/25 text-emerald-800 dark:text-emerald-100";
+    if (count <= 5) return "bg-emerald-500/50 text-emerald-900 dark:text-white";
+    return "bg-emerald-500/80 text-white";
+  };
+
+  const isFuture = (y, m) => y > now.getFullYear() || (y === now.getFullYear() && m > now.getMonth());
+
+  return (
+    <div className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-5">
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm font-semibold text-[color:var(--text)]">{monthLabel}</p>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setCursor((c) => (c.m === 0 ? { y: c.y - 1, m: 11 } : { y: c.y, m: c.m - 1 }))}
+            className="p-1 rounded-md text-[color:var(--text-faint)] hover:text-[color:var(--text)] hover:bg-white/5 transition">
+            <ChevronLeft size={16} />
+          </button>
+          <button onClick={() => setCursor((c) => (c.m === 11 ? { y: c.y + 1, m: 0 } : { y: c.y, m: c.m + 1 }))}
+            disabled={isFuture(cursor.m === 11 ? cursor.y + 1 : cursor.y, cursor.m === 11 ? 0 : cursor.m + 1)}
+            className="p-1 rounded-md text-[color:var(--text-faint)] hover:text-[color:var(--text)] hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed transition">
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1.5 mb-1.5">
+        {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+          <div key={i} className="text-center text-[10px] uppercase tracking-wide text-[color:var(--text-faint)]">{d}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-1.5">
+        {cells.map((d, i) => {
+          if (!d) return <div key={i} />;
+          const key = `${cursor.y}-${pad2(cursor.m + 1)}-${pad2(d)}`;
+          const count = dailyLearned[key] || 0;
+          const today = key === todayKey;
+          const selected = key === selectedDate;
+          return (
+            <button key={i} onClick={() => setSelectedDate(key)} title={`${key}: ${count} word${count === 1 ? "" : "s"} learned`}
+              className={`aspect-square rounded-md flex items-center justify-center text-[11px] font-medium transition ${intensity(count)} ${today ? "ring-2 ring-emerald-500" : ""} ${selected ? "outline outline-2 outline-offset-1 outline-[color:var(--accent-text)]" : ""}`}>
+              {d}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center justify-end gap-1.5 mt-4 text-[10px] text-[color:var(--text-faint)]">
+        <span>Less</span>
+        <span className="h-3 w-3 rounded bg-[color:var(--surface2)]" />
+        <span className="h-3 w-3 rounded bg-emerald-500/25" />
+        <span className="h-3 w-3 rounded bg-emerald-500/50" />
+        <span className="h-3 w-3 rounded bg-emerald-500/80" />
+        <span>More</span>
+      </div>
+
+      {selectedDate && (
+        <DayDetail dateStr={selectedDate} dailyLearned={dailyLearned} activeList={activeList} />
+      )}
+    </div>
+  );
+}
+
+function DayDetail({ dateStr, dailyLearned, activeList }) {
+  const info = projectPlanForDate(activeList, dateStr);
+  const label = new Date(dateStr + "T00:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  const isToday = dateStr === todayStr();
+
+  return (
+    <div className="mt-4 pt-4 border-t border-[color:var(--border)]">
+      <p className="text-xs font-medium text-[color:var(--text)] mb-2">{label}{isToday ? " · Today" : ""}</p>
+      {info.kind === "past" ? (
+        <>
+          {(() => {
+            const actual = dailyLearned[dateStr] || 0;
+            const goal = info.goal;
+            const pct = goal ? Math.min(100, Math.round((actual / goal) * 100)) : null;
+            return (
+              <>
+                <p className="text-xs text-[color:var(--text-dim)]">
+                  {actual} word{actual === 1 ? "" : "s"} learned{goal ? ` of a ${goal}-word goal` : ""}.
+                </p>
+                {goal !== null && (
+                  <div className="h-1.5 rounded-full bg-[color:var(--surface2)] mt-2 overflow-hidden">
+                    <div className="h-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                )}
+              </>
+            );
+          })()}
+        </>
+      ) : info.plan ? (
+        <p className="text-xs text-[color:var(--text-dim)]">
+          Planned: ~{info.newCount} new word{info.newCount === 1 ? "" : "s"}{info.reviewCount ? ` + ~${info.reviewCount} review${info.reviewCount === 1 ? "" : "s"}` : ""}
+          <span className="text-[color:var(--text-faint)]"> (estimate based on your current pace)</span>
+        </p>
+      ) : (
+        <p className="text-xs text-[color:var(--text-faint)]">
+          {activeList ? "No daily plan set for this list — add one in Word Lists to see projections here." : "Add a word list to see your plan here."}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/* ---------------- Dashboard ---------------- */
+function Dashboard({ apiKey, masteredCount, totalIntroduced, todayLearned, stats, streak, activeList, learnPending, setView }) {
+  const goal = activeList?.plan?.newPerDay || 5;
+  const pct = Math.min(100, Math.round((todayLearned / goal) * 100));
+
+  const cards = [
+    { label: "Learned today", value: `${todayLearned}/${goal}`, icon: Target, tint: "text-sky-600 dark:text-sky-300" },
+    { label: "Total introduced", value: totalIntroduced, icon: BookOpen, tint: "text-emerald-600 dark:text-emerald-300" },
+    { label: "Mastered", value: masteredCount, icon: Award, tint: "text-violet-600 dark:text-violet-300" },
+    { label: "Sessions completed", value: stats.sessions, icon: Trophy, tint: "text-teal-600 dark:text-teal-300" },
+  ];
+
+  return (
+    <div className="max-w-4xl mx-auto px-8 py-10">
+      <header className="mb-8">
+        <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)] mb-1">Dashboard</p>
+        <h2 className="text-2xl font-semibold text-[color:var(--text)]">Your writing cockpit</h2>
+      </header>
+
+      <div className="mb-8 rounded-2xl bg-gradient-to-br from-emerald-500/15 to-teal-500/5 ring-1 ring-emerald-500/25 p-6 flex items-center gap-6">
+        <div className="h-20 w-20 rounded-full flex items-center justify-center relative shrink-0"
+          style={{ background: `conic-gradient(#10b981 ${pct}%, rgba(120,120,120,0.18) ${pct}%)` }}>
+          <div className="rounded-full bg-[color:var(--surface)] flex items-center justify-center text-sm font-bold text-[color:var(--text)]" style={{ height: 60, width: 60 }}>
+            {pct}%
+          </div>
+        </div>
+        <div className="flex-1">
+          <p className="text-lg font-semibold text-[color:var(--text)] flex items-center gap-2">
+            <Flame className="text-orange-500 dark:text-orange-400" size={20} /> {streak.count}-day streak
+          </p>
+          <p className="text-sm text-[color:var(--text-dim)] mt-1">
+            {todayLearned >= goal ? "Today's goal is done — great work!" : `${goal - todayLearned} more word${goal - todayLearned === 1 ? "" : "s"} to hit today's goal.`}
+          </p>
+          <button onClick={() => setView(learnPending ? "learn" : "quiz")}
+            className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400 transition">
+            {learnPending ? <GraduationCap size={14} /> : <Zap size={14} />}
+            {learnPending ? "Start today's session" : "Review today's words"}
+          </button>
+        </div>
+      </div>
+
+      {!apiKey && (
+        <div className="mb-8 rounded-xl px-5 py-4 flex items-start gap-3 ring-1 bg-amber-500/5 ring-amber-500/30">
+          <AlertTriangle className="text-amber-500 dark:text-amber-400 mt-0.5" size={20} />
+          <div>
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-100">No API key yet</p>
+            <p className="text-xs text-[color:var(--text-dim)] mt-0.5">Add it under Settings to unlock Claude auto-fill and writing feedback.</p>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-4 mb-8">
+        {cards.map((c) => (
+          <div key={c.label} className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-5">
+            <c.icon size={18} className={c.tint} />
+            <p className="text-2xl font-semibold text-[color:var(--text)] mt-3">{c.value}</p>
+            <p className="text-xs text-[color:var(--text-dim)] mt-0.5">{c.label}</p>
+          </div>
+        ))}
+      </div>
+
+      <div>
+        <h3 className="text-sm font-semibold text-[color:var(--text)] mb-3">Learning calendar</h3>
+        <CalendarHeatmap dailyLearned={stats.dailyLearned || {}} activeList={activeList} />
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Settings ---------------- */
+function SettingsView({ apiKey, setApiKey, model, setModel, theme, setTheme, onLogout }) {
+  const [draft, setDraft] = useState(apiKey);
+  const dirty = draft !== apiKey;
+  const account = load(LS.account, null);
+  const themes = [
+    { id: "light", label: "Light", icon: Sun },
+    { id: "dark", label: "Dark", icon: Moon },
+    { id: "system", label: "System", icon: Monitor },
+  ];
+
+  return (
+    <div className="max-w-3xl mx-auto px-8 py-10">
+      <header className="mb-8">
+        <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)] mb-1">Settings</p>
+        <h2 className="text-2xl font-semibold text-[color:var(--text)]">API & appearance</h2>
+      </header>
+
+      <section className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-6 mb-6">
+        <h3 className="text-sm font-semibold text-[color:var(--text)] mb-4 flex items-center gap-2">
+          <Key size={15} className="text-[color:var(--accent-text)]" /> API Settings
+        </h3>
+        <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Anthropic API key</label>
+        <div className="flex gap-2 mb-5">
+          <input type="password" value={draft} onChange={(e) => setDraft(e.target.value)}
+            placeholder="sk-ant-..." autoComplete="off"
+            className="flex-1 bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50 font-mono" />
+          <button onClick={() => setApiKey(draft)} disabled={!dirty}
+            className="px-4 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400 disabled:opacity-30 disabled:cursor-not-allowed transition">
+            Save
+          </button>
+        </div>
+        <p className="text-[11px] text-[color:var(--text-faint)] mb-5 -mt-3">Stored only in this browser's localStorage. Never sent anywhere except Anthropic.</p>
+
+        <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Claude model</label>
+        <select value={model} onChange={(e) => setModel(e.target.value)}
+          className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50">
+          {MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+        </select>
+      </section>
+
+      <section className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-6">
+        <h3 className="text-sm font-semibold text-[color:var(--text)] mb-4">Theme</h3>
+        <div className="grid grid-cols-3 gap-3">
+          {themes.map((t) => (
+            <button key={t.id} onClick={() => setTheme(t.id)}
+              className={`flex flex-col items-center gap-2 py-4 rounded-lg ring-1 transition ${
+                theme === t.id ? "bg-emerald-500/15 ring-emerald-400/40 text-[color:var(--accent-text)]" : "ring-[color:var(--border)] text-[color:var(--text-dim)] hover:text-[color:var(--text)]"}`}>
+              <t.icon size={20} />
+              <span className="text-xs font-medium">{t.label}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-6 mt-6">
+        <h3 className="text-sm font-semibold text-[color:var(--text)] mb-1">Account</h3>
+        <p className="text-xs text-[color:var(--text-dim)] mb-4">{account ? `Signed in as ${account.name} (${account.email})` : "Local profile"}</p>
+        <button onClick={onLogout}
+          className="px-4 py-2 rounded-lg ring-1 ring-[color:var(--border)] text-sm text-[color:var(--text)] hover:ring-rose-500/40 hover:text-rose-600 dark:hover:text-rose-300 transition">
+          Log out
+        </button>
+      </section>
+    </div>
+  );
+}
+
+/* ---------------- Word Lists ---------------- */
+async function fetchDefinition(word, apiKey, model) {
+  const system = `You are a lexicographer. Given a single English word, return ONLY valid JSON (no markdown, no preamble) matching exactly:
+{"def": string, "vibe": "formal"|"academic"|"casual"|"literary", "coll": string}
+"def" is one clear sentence. "vibe" is the register the word most naturally belongs to. "coll" is 3 comma-separated natural collocations.`;
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+    body: JSON.stringify({ model, max_tokens: 300, system, messages: [{ role: "user", content: `Word: ${word}` }] }),
+  });
+  if (!res.ok) throw new Error(`Request failed (${res.status})`);
+  const data = await res.json();
+  const raw = data.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
+  return JSON.parse(raw.replace(/```json|```/g, "").trim());
+}
+
+const PDF_MAX_PAGES = 250;
+
+async function extractPdfText(file, onProgress) {
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const pageCount = Math.min(pdf.numPages, PDF_MAX_PAGES);
+  let full = "";
+  for (let i = 1; i <= pageCount; i++) {
+    onProgress && onProgress(i, pageCount);
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    full += content.items.map((it) => it.str).join(" ") + "\n";
+    page.cleanup && page.cleanup();
+  }
+  return { text: full, truncated: pdf.numPages > PDF_MAX_PAGES, totalPages: pdf.numPages };
+}
+
+function extractJsonArray(raw) {
+  const cleaned = raw.replace(/```json|```/g, "").trim();
+  try { return JSON.parse(cleaned); } catch { /* fall through to bracket scan */ }
+  const start = cleaned.indexOf("[");
+  const end = cleaned.lastIndexOf("]");
+  if (start === -1 || end === -1 || end <= start) throw new Error("No JSON array found in response");
+  return JSON.parse(cleaned.slice(start, end + 1));
+}
+
+async function extractWordsWithAI(rawText, apiKey, model, onProgress) {
+  const CHUNK = 6000;
+  const chunks = [];
+  for (let i = 0; i < rawText.length; i += CHUNK) chunks.push(rawText.slice(i, i + CHUNK));
+  const capped = chunks.slice(0, 14);
+  const system = `You are extracting a clean vocabulary list from raw, possibly messy text (often pulled from a PDF word list). The text may mix real vocabulary words and their definitions together with noise: page numbers, headers, instructions, part-of-speech tags, example sentences, etc.
+Identify ONLY the actual vocabulary words being taught. Return ONLY valid JSON (no markdown, no preamble): an array of objects like [{"word": string, "def": string}].
+Rules:
+- "word" must be a single real English word or short fixed phrase — no numbering, no page numbers, no stray punctuation.
+- "def" is the definition if one is clearly present in the text near the word, kept to one short sentence; otherwise an empty string. Do not invent definitions that aren't in the text.
+- Skip headers, instructions, page numbers, and anything that is not itself a vocabulary entry.
+- If a chunk has no real vocabulary entries, return an empty array [].`;
+  let all = [];
+  let failedChunks = 0;
+  for (let i = 0; i < capped.length; i++) {
+    onProgress && onProgress(i + 1, capped.length);
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+        body: JSON.stringify({ model, max_tokens: 8000, system, messages: [{ role: "user", content: `Raw text:\n"""${capped[i]}"""` }] }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e?.error?.message || `Request failed (${res.status})`);
+      }
+      const data = await res.json();
+      const raw = data.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
+      const parsed = extractJsonArray(raw);
+      if (Array.isArray(parsed)) all = all.concat(parsed);
+    } catch (err) {
+      failedChunks++;
+      // keep going — a single messy chunk shouldn't sink the whole import
+    }
+  }
+  const seen = new Set();
+  const deduped = [];
+  for (const w of all) {
+    const key = (w?.word || "").trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    deduped.push({ word: w.word.trim(), def: (w.def || "").trim() });
+  }
+  return { words: deduped, failedChunks, totalChunks: capped.length, truncated: chunks.length > capped.length };
+}
+
+async function suggestPlanWithAI(words, apiKey, model) {
+  const system = `You are a spaced-repetition learning coach. Given the size of a vocabulary list (and a sample of its words), recommend a sustainable daily study plan so a learner fully memorizes the whole list without burning out: how many brand-new words to introduce per day, and how many previously-learned words to review per day. Return ONLY valid JSON (no markdown, no preamble): {"newPerDay": number, "reviewPerDay": number, "estimatedDays": number, "rationale": string}. "rationale" is one short sentence (under 140 characters) explaining the pacing.`;
+  const sample = words.slice(0, 25).map((w) => w.word).join(", ");
+  const user = `Total words: ${words.length}. Sample: ${sample}${words.length > 25 ? ", …" : ""}.`;
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+    body: JSON.stringify({ model, max_tokens: 300, system, messages: [{ role: "user", content: user }] }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e?.error?.message || `Request failed (${res.status})`);
+  }
+  const data = await res.json();
+  const raw = data.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
+  return extractJsonArray(`[${raw.replace(/```json|```/g, "").trim()}]`)[0];
+}
+
+function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, model }) {
+  const [importText, setImportText] = useState("");
+  const [importName, setImportName] = useState("");
+  const [preview, setPreview] = useState(null);
+  const [filling, setFilling] = useState(0);
+  const [planDraft, setPlanDraft] = useState(null);
+  const [planRationale, setPlanRationale] = useState(null);
+  const [planLoading, setPlanLoading] = useState(false);
+  const [planError, setPlanError] = useState(null);
+  const [editingPlanId, setEditingPlanId] = useState(null);
+  const [editPlanDraft, setEditPlanDraft] = useState(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfProgress, setPdfProgress] = useState(null);
+  const [pdfError, setPdfError] = useState(null);
+  const [aiParsing, setAiParsing] = useState(false);
+  const [aiProgress, setAiProgress] = useState(null);
+  const [aiError, setAiError] = useState(null);
+  const [aiNotice, setAiNotice] = useState(null);
+  const fileRef = useRef(null);
+
+  const addOfficialList = (key) => {
+    const src = OFFICIAL_LISTS[key];
+    const words = src.words.map(freshWord);
+    const plan = suggestPlan(words.length);
+    const id = `${key}-${Date.now()}`;
+    setLists((ls) => [...ls, { id, name: src.name, source: "official-key", officialKey: key, plan, createdAt: Date.now(), words }]);
+    setActiveListId(id);
+  };
+
+  const parseImport = () => {
+    const lines = importText.split("\n").map((l) => l.trim()).filter(Boolean);
+    const words = lines.map((rawLine) => {
+      const line = rawLine.replace(/^\s*[\d]+[\.\)]\s*/, "").replace(/\([^)]*\)/g, "").trim();
+      const parts = line.split(/:|—|--|-{1}(?=\s)/);
+      const word = (parts[0] || "").trim().replace(/[.,;]+$/, "");
+      const def = parts.slice(1).join(":").trim();
+      return freshWord({ word, def: def || "", vibe: "formal", coll: "" });
+    }).filter((w) => w.word && /^[a-zA-Z][a-zA-Z\s-]*$/.test(w.word) && w.word.length <= 30);
+    if (!words.length) return;
+    setPreview(words);
+    setPlanDraft(suggestPlan(words.length));
+  };
+
+  const runAiExtractOn = async (text) => {
+    if (!apiKey || !text.trim()) return false;
+    setAiParsing(true); setAiError(null); setAiNotice(null); setAiProgress(null);
+    try {
+      const { words: found, failedChunks, totalChunks, truncated } = await extractWordsWithAI(
+        text, apiKey, model, (current, total) => setAiProgress({ current, total })
+      );
+      if (!found.length) {
+        setAiError(failedChunks
+          ? "Claude couldn't process that text (the request may have failed) — try again, or use \"Parse words\" instead."
+          : "Claude couldn't find any vocabulary words in that text — try pasting a cleaner excerpt.");
+        return false;
+      }
+      const words = found.map((w) => freshWord({ word: w.word, def: w.def, vibe: "formal", coll: "" }));
+      setPreview(words);
+      setPlanDraft(suggestPlan(words.length));
+      if (failedChunks || truncated) {
+        const bits = [];
+        if (failedChunks) bits.push(`${failedChunks} of ${totalChunks} section${totalChunks === 1  ? "" : "s"} failed and were skipped`);
+        if (truncated) bits.push("only the first portion of this very large text was analyzed");
+        setAiNotice(`Found ${found.length} words, but ${bits.join("; ")} — review the list below before creating it.`);
+      }
+      return true;
+    } catch (err) {
+      setAiError(err.message || "AI extraction failed.");
+      return false;
+    } finally {
+      setAiParsing(false); setAiProgress(null);
+    }
+  };
+
+  const runAiExtract = () => runAiExtractOn(importText);
+
+  const handlePdfUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setPdfLoading(true); setPdfError(null);
+    try {
+      const { text, truncated, totalPages } = await extractPdfText(file, (current, total) => setPdfProgress({ current, total }));
+      if (!text.trim()) {
+        setPdfError("This PDF doesn't seem to contain selectable text (it may be a scanned image) — try a different file or paste the words manually.");
+        return;
+      }
+      setImportText((t) => (t ? t + "\n" : "") + text);
+      if (truncated) setPdfError(`This PDF has ${totalPages} pages — only the first ${PDF_MAX_PAGES} were read to keep things fast. Add the rest manually if you need it.`);
+      setPdfLoading(false);
+      if (apiKey) {
+        await runAiExtractOn(text);
+      }
+    } catch (err) {
+      setPdfError("Couldn't read that PDF — it may be corrupted, password-protected, or too large for the browser to process. Try a different file or paste the words manually.");
+      setPdfLoading(false);
+    } finally {
+      setPdfLoading(false); setPdfProgress(null);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const fillMissingDefs = async () => {
+    if (!apiKey || !preview) return;
+    const next = [...preview];
+    for (let i = 0; i < next.length; i++) {
+      if (next[i].def) continue;
+      setFilling(i + 1);
+      try {
+        const parsed = await fetchDefinition(next[i].word, apiKey, model);
+        next[i] = { ...next[i], def: parsed.def || "", vibe: parsed.vibe || "formal", coll: parsed.coll || "" };
+        setPreview([...next]);
+      } catch { /* skip word on failure, keep going */ }
+    }
+    setFilling(0);
+  };
+
+  const createImportedList = () => {
+    if (!preview || !preview.length) return;
+    const id = `custom-${Date.now()}`;
+    const name = importName.trim() || `Imported list (${preview.length})`;
+    setLists((ls) => [...ls, { id, name, source: "custom", plan: planDraft, createdAt: Date.now(), words: preview }]);
+    setActiveListId(id);
+    setImportText(""); setImportName(""); setPreview(null); setPlanDraft(null); setPlanRationale(null);
+  };
+
+  const optimizePlanWithAI = async () => {
+    if (!apiKey || !preview) return;
+    setPlanLoading(true); setPlanError(null);
+    try {
+      const suggestion = await suggestPlanWithAI(preview, apiKey, model);
+      if (suggestion && Number.isFinite(suggestion.newPerDay)) {
+        setPlanDraft({ newPerDay: Math.max(1, Math.round(suggestion.newPerDay)), reviewPerDay: Math.max(1, Math.round(suggestion.reviewPerDay || suggestion.newPerDay * 2)) });
+        setPlanRationale(suggestion.rationale || null);
+      }
+    } catch (err) {
+      setPlanError(err.message || "Couldn't get an AI plan right now — the manual pacing above still works fine.");
+    } finally {
+      setPlanLoading(false);
+    }
+  };
+
+  const startEditPlan = (list) => {
+    setEditingPlanId(list.id);
+    setEditPlanDraft(list.plan || suggestPlan(list.words.length) || { newPerDay: 5, reviewPerDay: 10 });
+  };
+
+  const savePlanEdit = (listId) => {
+    setLists((ls) => ls.map((l) => (l.id === listId ? { ...l, plan: editPlanDraft } : l)));
+    setEditingPlanId(null); setEditPlanDraft(null);
+  };
+
+  const optimizeExistingPlanWithAI = async (list) => {
+    if (!apiKey) return;
+    setPlanLoading(true); setPlanError(null);
+    try {
+      const suggestion = await suggestPlanWithAI(list.words, apiKey, model);
+      if (suggestion && Number.isFinite(suggestion.newPerDay)) {
+        setEditPlanDraft({ newPerDay: Math.max(1, Math.round(suggestion.newPerDay)), reviewPerDay: Math.max(1, Math.round(suggestion.reviewPerDay || suggestion.newPerDay * 2)) });
+        setPlanRationale(suggestion.rationale || null);
+      }
+    } catch (err) {
+      setPlanError(err.message || "Couldn't get an AI plan right now.");
+    } finally {
+      setPlanLoading(false);
+    }
+  };
+
+  const removeList = (id) => {
+    if (lists.length <= 1) return;
+    setLists((ls) => ls.filter((l) => l.id !== id));
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto px-8 py-10 space-y-10">
+      <header>
+        <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)] mb-1">库 · Word Lists</p>
+        <h2 className="text-2xl font-semibold text-[color:var(--text)]">Choose what to study</h2>
+      </header>
+
+      <section>
+        <h3 className="text-sm font-semibold text-[color:var(--text)] mb-3">Official word lists</h3>
+        <div className="grid grid-cols-3 gap-4">
+          {Object.entries(OFFICIAL_LISTS).map(([key, l]) => (
+            <div key={key} className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-5">
+              <p className="text-sm font-semibold text-[color:var(--text)]">{l.name}</p>
+              <p className="text-xs text-[color:var(--text-faint)] mt-1">{l.words.length} words</p>
+              <button onClick={() => addOfficialList(key)}
+                className="mt-4 w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-xs font-semibold hover:bg-emerald-400 transition">
+                <Plus size={13} /> Add to my lists
+              </button>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <h3 className="text-sm font-semibold text-[color:var(--text)] mb-3">Import your own words</h3>
+        <div className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-6 space-y-4">
+          {!preview ? (
+            <>
+              <p className="text-xs text-[color:var(--text-dim)]">One word per line. Optionally add a definition after a colon or dash — e.g. <span className="font-mono">mitigate: to make less severe</span>.</p>
+              <textarea value={importText} onChange={(e) => setImportText(e.target.value)} rows={6}
+                placeholder={"serendipity\nresilient: able to recover quickly\nobfuscate - to make unclear"}
+                className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50 font-mono resize-none" />
+              <div className="flex items-center gap-3 flex-wrap">
+                <button onClick={parseImport} disabled={!importText.trim()}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] text-[color:var(--text)] text-sm font-medium hover:ring-emerald-500/40 disabled:opacity-40 transition">
+                  <Upload size={14} /> Parse words (fast)
+                </button>
+                <button onClick={runAiExtract} disabled={!importText.trim() || !apiKey || aiParsing}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 disabled:opacity-40 transition">
+                  {aiParsing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                  {aiParsing ? `Analyzing${aiProgress ? ` ${aiProgress.current}/${aiProgress.total}` : ""}…` : "Analyze with Claude"}
+                </button>
+                <span className="text-xs text-[color:var(--text-faint)]">or</span>
+                <input ref={fileRef} type="file" accept="application/pdf" className="hidden" onChange={handlePdfUpload} />
+                <button onClick={() => fileRef.current?.click()} disabled={pdfLoading || aiParsing}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] text-[color:var(--text)] text-sm font-medium hover:ring-emerald-500/40 disabled:opacity-50 transition">
+                  {(pdfLoading || aiParsing) ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+                  {pdfLoading ? `Reading PDF${pdfProgress ? ` (page ${pdfProgress.current}/${pdfProgress.total})` : ""}…`
+                    : aiParsing ? `Scanning for vocab${aiProgress ? ` ${aiProgress.current}/${aiProgress.total}` : ""}…`
+                    : "Upload a PDF word list"}
+                </button>
+              </div>
+              {pdfError && <p className="text-[11px] text-rose-700 dark:text-rose-300">{pdfError}</p>}
+              {aiError && <p className="text-[11px] text-rose-700 dark:text-rose-300">{aiError}</p>}
+              {aiNotice && <p className="text-[11px] text-amber-700 dark:text-amber-300">{aiNotice}</p>}
+              <p className="text-[11px] text-[color:var(--text-faint)]">
+                "Parse words" is a quick local split by line. If your text has definitions, example sentences, or other clutter mixed in (common with PDFs), use <span className="font-medium">Analyze with Claude</span> instead — it reads the whole thing and pulls out just the real vocabulary words and their definitions{!apiKey ? " (needs an API key in Settings)" : ""}.
+                {apiKey ? " PDFs are scanned by Claude automatically after upload." : " Add an API key in Settings and PDFs will be scanned automatically after upload."}
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-[color:var(--text)]">Found <span className="font-semibold">{preview.length}</span> words.</p>
+                <button onClick={() => { setPreview(null); setPlanDraft(null); }} className="text-xs text-[color:var(--text-faint)] hover:text-[color:var(--text)]">Start over</button>
+              </div>
+              <input value={importName} onChange={(e) => setImportName(e.target.value)} placeholder="List name (optional)"
+                className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+
+              {preview.some((w) => !w.def) && (
+                <div className="flex items-center justify-between rounded-lg bg-emerald-500/5 ring-1 ring-emerald-500/20 px-4 py-2.5">
+                  <p className="text-xs text-[color:var(--text-dim)]">{preview.filter((w) => !w.def).length} word(s) missing a definition.</p>
+                  <button onClick={fillMissingDefs} disabled={!apiKey || filling > 0}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-xs font-semibold hover:bg-emerald-400 disabled:opacity-40 transition shrink-0">
+                    {filling > 0 ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                    {filling > 0 ? `Filling ${filling}/${preview.length}…` : "Auto-fill with Claude"}
+                  </button>
+                </div>
+              )}
+
+              <div className="max-h-40 overflow-y-auto space-y-1.5">
+                {preview.map((w, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg bg-[color:var(--surface2)]">
+                    <span className="font-medium text-[color:var(--text)]">{w.word}</span>
+                    <span className="text-[color:var(--text-faint)] truncate">{w.def || "(no definition yet)"}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="rounded-lg bg-sky-500/5 ring-1 ring-sky-500/20 px-4 py-3">
+                {planDraft ? (
+                  <>
+                    <p className="text-xs text-sky-800 dark:text-sky-200 mb-2">That's a lot of words — here's a suggested daily pace so you don't burn out:</p>
+                    <div className="flex gap-4">
+                      <label className="flex-1 text-xs text-[color:var(--text-dim)]">New words / day
+                        <input type="number" min={1} value={planDraft.newPerDay}
+                          onChange={(e) => setPlanDraft({ ...planDraft, newPerDay: +e.target.value || 1 })}
+                          className="mt-1 w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-2 py-1.5 text-[color:var(--text)]" />
+                      </label>
+                      <label className="flex-1 text-xs text-[color:var(--text-dim)]">Reviews / day
+                        <input type="number" min={1} value={planDraft.reviewPerDay}
+                          onChange={(e) => setPlanDraft({ ...planDraft, reviewPerDay: +e.target.value || 1 })}
+                          className="mt-1 w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-2 py-1.5 text-[color:var(--text)]" />
+                      </label>
+                    </div>
+                    {planRationale && <p className="text-[11px] text-sky-700 dark:text-sky-300 mt-2 italic">"{planRationale}"</p>}
+                    {planError && <p className="text-[11px] text-rose-700 dark:text-rose-300 mt-2">{planError}</p>}
+                    <div className="flex items-center gap-3 mt-2">
+                      <button onClick={() => setPlanDraft(null)} className="text-[11px] text-[color:var(--text-faint)] hover:text-[color:var(--text)]">Skip pacing — study them all at once</button>
+                      {apiKey && (
+                        <button onClick={optimizePlanWithAI} disabled={planLoading}
+                          className="flex items-center gap-1 text-[11px] text-sky-700 dark:text-sky-300 hover:underline disabled:opacity-50">
+                          {planLoading ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+                          {planLoading ? "Optimizing…" : "Let Claude optimize this plan"}
+                        </button>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-sky-800 dark:text-sky-200">Small enough to learn in one sitting — no pacing needed.</p>
+                    {preview.length > 10 && <button onClick={() => setPlanDraft(suggestPlan(preview.length))} className="text-[11px] text-sky-700 dark:text-sky-300 hover:underline">Add a daily plan anyway</button>}
+                  </div>
+                )}
+              </div>
+
+              <button onClick={createImportedList}
+                className="w-full flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 transition">
+                <Check size={15} /> Create list
+              </button>
+            </>
+          )}
+        </div>
+      </section>
+
+      <section>
+        <h3 className="text-sm font-semibold text-[color:var(--text)] mb-3">My lists</h3>
+        <div className="space-y-2">
+          {lists.map((l) => {
+            const mastered = l.words.filter((w) => w.box >= 5).length;
+            const active = l.id === activeListId;
+            const editing = editingPlanId === l.id;
+            return (
+              <div key={l.id} className={`rounded-xl ring-1 transition ${
+                active ? "bg-emerald-500/10 ring-emerald-500/40" : "bg-[color:var(--surface)] ring-[color:var(--border)]"}`}>
+                <div className="flex items-center gap-4 px-5 py-4">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-[color:var(--text)]">{l.name} {active && <span className="text-[10px] uppercase tracking-wide text-[color:var(--accent-text)] ml-1">studying</span>}</p>
+                    <p className="text-xs text-[color:var(--text-faint)] mt-0.5">
+                      {l.words.length} words · {mastered} mastered {l.plan ? `· plan: ${l.plan.newPerDay} new / ${l.plan.reviewPerDay} review per day` : "· no daily plan"}
+                    </p>
+                  </div>
+                  <button onClick={() => (editing ? (setEditingPlanId(null), setEditPlanDraft(null)) : startEditPlan(l))}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[color:var(--surface2)] text-[color:var(--text-dim)] hover:text-[color:var(--text)] ring-1 ring-[color:var(--border)]">
+                    {editing ? "Close" : "Edit plan"}
+                  </button>
+                  {!active && <button onClick={() => setActiveListId(l.id)} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[color:var(--surface2)] text-[color:var(--text-dim)] hover:text-[color:var(--text)] ring-1 ring-[color:var(--border)]">Study this</button>}
+                  {lists.length > 1 && <button onClick={() => removeList(l.id)} className="text-[color:var(--text-faint)] hover:text-rose-500 p-1"><Trash2 size={15} /></button>}
+                </div>
+                {editing && editPlanDraft && (
+                  <div className="px-5 pb-4">
+                    <div className="rounded-lg bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] p-4">
+                      <div className="flex gap-4 mb-2">
+                        <label className="flex-1 text-xs text-[color:var(--text-dim)]">New words / day
+                          <input type="number" min={1} value={editPlanDraft.newPerDay}
+                            onChange={(e) => setEditPlanDraft({ ...editPlanDraft, newPerDay: +e.target.value || 1 })}
+                            className="mt-1 w-full bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] rounded-lg px-2 py-1.5 text-[color:var(--text)]" />
+                        </label>
+                        <label className="flex-1 text-xs text-[color:var(--text-dim)]">Reviews / day
+                          <input type="number" min={1} value={editPlanDraft.reviewPerDay}
+                            onChange={(e) => setEditPlanDraft({ ...editPlanDraft, reviewPerDay: +e.target.value || 1 })}
+                            className="mt-1 w-full bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] rounded-lg px-2 py-1.5 text-[color:var(--text)]" />
+                        </label>
+                      </div>
+                      {planRationale && <p className="text-[11px] text-sky-700 dark:text-sky-300 mb-2 italic">"{planRationale}"</p>}
+                      {planError && <p className="text-[11px] text-rose-700 dark:text-rose-300 mb-2">{planError}</p>}
+                      <div className="flex items-center justify-between">
+                        {apiKey ? (
+                          <button onClick={() => optimizeExistingPlanWithAI(l)} disabled={planLoading}
+                            className="flex items-center gap-1 text-[11px] text-sky-700 dark:text-sky-300 hover:underline disabled:opacity-50">
+                            {planLoading ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+                            {planLoading ? "Optimizing…" : "Let Claude optimize this plan"}
+                          </button>
+                        ) : <span />}
+                        <div className="flex gap-2">
+                          <button onClick={() => setEditPlanDraft(null)} className="text-[11px] text-[color:var(--text-faint)] hover:text-[color:var(--text)] px-2">No plan (study all at once)</button>
+                          <button onClick={() => savePlanEdit(l.id)}
+                            className="px-3 py-1.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-xs font-semibold hover:bg-emerald-400">Save</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {editing && !editPlanDraft && (
+                  <div className="px-5 pb-4 flex items-center justify-between">
+                    <p className="text-xs text-[color:var(--text-faint)]">No daily plan — this list is studied all at once.</p>
+                    <div className="flex gap-2">
+                      <button onClick={() => setEditPlanDraft(suggestPlan(l.words.length) || { newPerDay: 5, reviewPerDay: 10 })}
+                        className="text-[11px] text-sky-700 dark:text-sky-300 hover:underline">Add a daily plan</button>
+                      <button onClick={() => savePlanEdit(l.id)}
+                        className="px-3 py-1.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-xs font-semibold hover:bg-emerald-400">Save</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/* ---------------- Vocab Deck ---------------- */
+function Deck({ list, lists, activeListId, setActiveListId, updateList, onOpen, apiKey, model }) {
+  const empty = { word: "", def: "", vibe: "formal", coll: "" };
+  const [form, setForm] = useState(empty);
+  const [open, setOpen] = useState(false);
+  const [looking, setLooking] = useState(false);
+  const [lookupErr, setLookupErr] = useState(null);
+
+  const lookup = async () => {
+    if (!form.word.trim() || !apiKey) return;
+    setLooking(true); setLookupErr(null);
+    try {
+      const parsed = await fetchDefinition(form.word.trim(), apiKey, model);
+      setForm((f) => ({ ...f, def: parsed.def || f.def, vibe: parsed.vibe || f.vibe, coll: parsed.coll || f.coll }));
+    } catch (err) {
+      setLookupErr(err.message || "Lookup failed.");
+    } finally {
+      setLooking(false);
+    }
+  };
+
+  const add = () => {
+    if (!form.word.trim() || !form.def.trim()) return;
+    updateList(list.id, (l) => ({ ...l, words: [freshWord({ ...form, id: Date.now() }), ...l.words] }));
+    setForm(empty); setOpen(false); setLookupErr(null);
+  };
+  const remove = (id) => updateList(list.id, (l) => ({ ...l, words: l.words.filter((w) => w.id !== id) }));
+
+  const vibeColor = (v) => ({
+    formal: "text-sky-700 dark:text-sky-100 bg-sky-500/15 dark:bg-sky-500/20",
+    academic: "text-violet-700 dark:text-violet-100 bg-violet-500/15 dark:bg-violet-500/20",
+    casual: "text-amber-700 dark:text-amber-100 bg-amber-500/15 dark:bg-amber-500/20",
+    literary: "text-rose-700 dark:text-rose-100 bg-rose-500/15 dark:bg-rose-500/20",
+  }[v] || "text-slate-700 dark:text-slate-100 bg-slate-500/15 dark:bg-slate-500/20");
+
+  const boxLabel = (w) => (!w.seen ? "new" : w.box >= 5 ? "mastered" : `box ${w.box}`);
+
+  return (
+    <div className="max-w-4xl mx-auto px-8 py-10">
+      <header className="flex items-end justify-between mb-8">
+        <div>
+          <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)] mb-1">背 · Vocab Deck</p>
+          <h2 className="text-2xl font-semibold text-[color:var(--text)]">Target words</h2>
+        </div>
+        <button onClick={() => setOpen((o) => !o)}
+          className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400 transition">
+          <Plus size={16} /> Add word
+        </button>
+      </header>
+
+      {lists.length > 1 && (
+        <div className="mb-6 flex items-center gap-2">
+          <span className="text-xs text-[color:var(--text-faint)]">Studying:</span>
+          <select value={activeListId} onChange={(e) => setActiveListId(e.target.value)}
+            className="bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-1.5 text-sm text-[color:var(--text)] focus:outline-none">
+            {lists.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+        </div>
+      )}
+
+      {open && (
+        <div className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-6 mb-6 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Word</label>
+              <input value={form.word} onChange={(e) => setForm({ ...form, word: e.target.value })}
+                className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+            </div>
+            <div>
+              <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Tone / Vibe</label>
+              <select value={form.vibe} onChange={(e) => setForm({ ...form, vibe: e.target.value })}
+                className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50">
+                {["formal", "academic", "casual", "literary"].map((v) => <option key={v}>{v}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between rounded-lg bg-emerald-500/5 ring-1 ring-emerald-500/20 px-4 py-2.5">
+            <p className="text-xs text-[color:var(--text-dim)]">Type a word, then let Claude fill the definition, vibe & collocations.</p>
+            <button onClick={lookup} disabled={looking || !form.word.trim() || !apiKey}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-xs font-semibold hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition shrink-0">
+              {looking ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+              {looking ? "Searching…" : "Auto-fill with Claude"}
+            </button>
+          </div>
+          {!apiKey && <p className="text-[11px] text-amber-700 dark:text-amber-300 -mt-1">Add your API key in Settings to enable auto-fill.</p>}
+          {lookupErr && <p className="text-[11px] text-rose-700 dark:text-rose-300 -mt-1">{lookupErr}</p>}
+
+          <div>
+            <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Definition</label>
+            <textarea value={form.def} onChange={(e) => setForm({ ...form, def: e.target.value })} rows={2}
+              placeholder="Write it yourself, or auto-fill above."
+              className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50 resize-none" />
+          </div>
+          <div>
+            <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Core collocations</label>
+            <input value={form.coll} onChange={(e) => setForm({ ...form, coll: e.target.value })}
+              placeholder="e.g. mitigate risk, mitigate the impact"
+              className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => { setOpen(false); setForm(empty); setLookupErr(null); }}
+              className="px-4 py-2 rounded-lg text-sm text-[color:var(--text-dim)] hover:text-[color:var(--text)]">Cancel</button>
+            <button onClick={add}
+              className="px-4 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400">Save word</button>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {list.words.map((w) => (
+          <div key={w.id} onClick={() => onOpen(w)}
+            className="group flex items-center gap-4 rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] px-5 py-4 hover:ring-emerald-500/40 cursor-pointer transition">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2.5 mb-1">
+                <span className="text-base font-semibold text-[color:var(--text)]">{w.word}</span>
+                <span className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full ${vibeColor(w.vibe)}`}>{w.vibe}</span>
+                <span className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-[color:var(--surface2)] text-[color:var(--text-faint)]">{boxLabel(w)}</span>
+              </div>
+              <p className="text-sm text-[color:var(--text-dim)] truncate">{w.def || "(no definition yet)"}</p>
+            </div>
+            <button onClick={(e) => { e.stopPropagation(); remove(w.id); }}
+              className="opacity-0 group-hover:opacity-100 text-[color:var(--text-faint)] hover:text-rose-500 transition p-1">
+              <Trash2 size={16} />
+            </button>
+            <ChevronRight size={16} className="text-[color:var(--text-faint)] group-hover:text-[color:var(--accent-text)] transition" />
+          </div>
+        ))}
+        {list.words.length === 0 && <p className="text-center text-sm text-[color:var(--text-dim)] py-12">No words yet. Add your first target word above.</p>}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Word Detail Page (full page) ---------------- */
+function WordDetailPage({ listId, wordId, lists, onBack }) {
+  const list = lists.find((l) => l.id === listId);
+  const word = list?.words.find((w) => w.id === wordId);
+
+  if (!word) {
+    return (
+      <div className="max-w-2xl mx-auto px-8 py-16 text-center">
+        <p className="text-sm text-[color:var(--text-dim)] mb-4">That word couldn't be found.</p>
+        <button onClick={onBack} className="px-4 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400">Go back</button>
+      </div>
+    );
+  }
+
+  const coll = (word.coll || "").split(",").map((c) => c.trim()).filter(Boolean);
+  const examples = buildExamples(word);
+  const boxLabel = !word.seen ? "New — not studied yet" : word.box >= 5 ? "Mastered" : `Box ${word.box} of 6`;
+
+  return (
+    <div className="max-w-3xl mx-auto px-8 py-10">
+      <button onClick={onBack} className="text-xs text-[color:var(--text-dim)] hover:text-[color:var(--text)] flex items-center gap-1 mb-6">
+        <ArrowLeft size={13} /> Back
+      </button>
+
+      <div className="text-center mb-10">
+        <span className="text-3xl">{VIBE_EMOJI[word.vibe] || "✨"}</span>
+        <p className="text-xs uppercase tracking-widest text-[color:var(--accent-text)] mt-2">{word.vibe}</p>
+        <h1 className="text-5xl font-bold text-[color:var(--text)] mt-2">{word.word}</h1>
+      </div>
+
+      <div className="grid grid-cols-4 gap-3 mb-8">
+        <div className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-4 text-center">
+          <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-faint)] mb-1">Status</p>
+          <p className="text-sm font-medium text-[color:var(--text)]">{boxLabel}</p>
+        </div>
+        <div className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-4 text-center">
+          <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-faint)] mb-1">Memorized</p>
+          <p className="text-sm font-medium text-[color:var(--text)]">{word.memRate || 0}%</p>
+        </div>
+        <div className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-4 text-center">
+          <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-faint)] mb-1">Correct / Missed</p>
+          <p className="text-sm font-medium text-[color:var(--text)]">{word.correctCount} / {word.wrongCount}</p>
+        </div>
+        <div className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-4 text-center">
+          <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-faint)] mb-1">Next review</p>
+          <p className="text-sm font-medium text-[color:var(--text)]">{word.due || "—"}</p>
+        </div>
+      </div>
+
+      <div className="space-y-6">
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-dim)] mb-1">Definition</p>
+          <p className="text-lg text-[color:var(--text)] leading-relaxed">{word.def || "No definition yet — edit this word in the Vocab Deck."}</p>
+        </div>
+
+        {coll.length > 0 && (
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-dim)] mb-2">Core collocations</p>
+            <div className="flex flex-wrap gap-2">
+              {coll.map((c, i) => (
+                <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 text-[color:var(--accent-text)] ring-1 ring-emerald-500/30">{c}</span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-dim)] mb-2">Example sentences</p>
+          <div className="space-y-2">
+            {examples.map((s, i) => (
+              <div key={i} className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-4">
+                <p className="text-sm text-[color:var(--text)] italic leading-relaxed">{s}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-xl bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] p-4">
+          <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-dim)] mb-2">Context tip</p>
+          <p className="text-sm text-[color:var(--text-dim)] leading-relaxed">
+            Reach for <span className="text-[color:var(--accent-text)] font-medium">{word.word}</span> in {word.vibe} writing where precision matters. Anchor it to one of its natural pairings above rather than using it in isolation.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Learn (multi-style study session) ---------------- */
+function LearnCard({ word, style, revealed, onReveal }) {
+  const examples = buildExamples(word);
+  const coll = (word.coll || "").split(",").map((c) => c.trim()).filter(Boolean);
+
+  if (style === "story") {
+    return (
+      <div>
+        <p className="text-xs uppercase tracking-wide text-[color:var(--text-faint)] mb-2">Read & remember</p>
+        <h3 className="text-4xl font-bold text-[color:var(--text)] mb-3">{word.word}</h3>
+        <p className="text-lg text-[color:var(--text)] mb-4 leading-relaxed">{word.def}</p>
+        <div className="space-y-2 mb-4">
+          {examples.slice(0, 2).map((s, i) => (
+            <p key={i} className="text-sm text-[color:var(--text-dim)] italic leading-relaxed">{s}</p>
+          ))}
+        </div>
+        {coll.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {coll.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 text-[color:var(--accent-text)] ring-1 ring-emerald-500/30">{c}</span>)}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (style === "context") {
+    return (
+      <div>
+        <p className="text-xs uppercase tracking-wide text-[color:var(--text-faint)] mb-2">Guess it from context</p>
+        <p className="text-lg text-[color:var(--text)] mb-2 leading-relaxed">{examples[0].replace(new RegExp(word.word, "i"), "____")}</p>
+        <p className="text-xs text-[color:var(--text-faint)] mb-4">Hint: {word.def}</p>
+        {!revealed ? (
+          <button onClick={onReveal} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 transition">
+            <Sparkles size={14} /> Show the word
+          </button>
+        ) : (
+          <div className="mt-2">
+            <h3 className="text-3xl font-bold text-[color:var(--accent-text)] mb-2">{word.word}</h3>
+            {coll.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {coll.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 text-[color:var(--accent-text)] ring-1 ring-emerald-500/30">{c}</span>)}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // style === "reveal"
+  return (
+    <div className="text-center">
+      <p className="text-xs uppercase tracking-wide text-[color:var(--text-faint)] mb-2">Recall first, then check</p>
+      <h3 className="text-4xl font-bold text-[color:var(--text)] mb-4">{word.word}</h3>
+      {!revealed ? (
+        <button onClick={onReveal} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 transition">
+          <Sparkles size={14} /> Reveal definition
+        </button>
+      ) : (
+        <div className="text-left mt-4 space-y-3">
+          <p className="text-base text-[color:var(--text)] leading-relaxed">{word.def}</p>
+          <p className="text-sm text-[color:var(--text-dim)] italic leading-relaxed">{examples[0]}</p>
+          {coll.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {coll.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 text-[color:var(--accent-text)] ring-1 ring-emerald-500/30">{c}</span>)}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MemorizeSession({ list, pool, updateList, setStats, registerActivity, onOpenDetail, onExit, setView }) {
+  const [subPhase, setSubPhase] = useState("session");
+  const [data, setData] = useState(() => {
+    const obj = {};
+    pool.forEach((w) => { obj[w.id] = { memRate: w.memRate || 0, memStarted: !!w.memStarted, done: (w.memRate || 0) >= 100 }; });
+    return obj;
+  });
+  const pick = (avoidId, snapshot) => {
+    const remaining = pool.filter((w) => !snapshot[w.id].done);
+    if (!remaining.length) return null;
+    const candidates = remaining.length > 1 ? remaining.filter((w) => w.id !== avoidId) : remaining;
+    const source = candidates.length ? candidates : remaining;
+    const weights = source.map((w) => Math.max(5, 100 - snapshot[w.id].memRate));
+    const total = weights.reduce((a, b) => a + b, 0);
+    let r = Math.random() * total;
+    for (let i = 0; i < source.length; i++) {
+      r -= weights[i];
+      if (r <= 0) return source[i].id;
+    }
+    return source[source.length - 1].id;
+  };
+  const [currentId, setCurrentId] = useState(() => pick(null, data));
+  const [showDetails, setShowDetails] = useState(false);
+
+  const finishSession = (finalData) => {
+    const today = todayStr();
+    let newlyIntroduced = 0;
+    updateList(list.id, (l) => ({
+      ...l,
+      words: l.words.map((w) => {
+        const d = finalData[w.id];
+        if (!d) return w;
+        if (!w.seen) newlyIntroduced++;
+        const boxBump = Math.min(6, (w.box || 0) + 1);
+        return { ...w, seen: true, learnedOn: w.learnedOn || today, box: boxBump,
+          due: addDays(today, LEITNER_DAYS[Math.min(boxBump, LEITNER_DAYS.length - 1)]), memRate: 100, memStarted: true };
+      }),
+    }));
+    if (newlyIntroduced > 0) {
+      setStats((s) => ({ ...s, dailyLearned: { ...(s.dailyLearned || {}), [today]: ((s.dailyLearned || {})[today] || 0) + newlyIntroduced } }));
+    }
+    registerActivity();
+    setSubPhase("summary");
+  };
+
+  const rate = (rating) => {
+    const cur = data[currentId];
+    let nextRate;
+    if (!cur.memStarted) {
+      nextRate = rating === "know" ? 100 : rating === "blurry" ? 20 : 0;
+    } else {
+      nextRate = rating === "know" ? Math.min(100, cur.memRate + 20) : rating === "blurry" ? Math.min(100, cur.memRate + 10) : cur.memRate;
+    }
+    const updated = { ...data, [currentId]: { memRate: nextRate, memStarted: true, done: nextRate >= 100 } };
+    setData(updated);
+    setShowDetails(false);
+    const nextId = pick(currentId, updated);
+    if (nextId) setCurrentId(nextId);
+    else finishSession(updated);
+  };
+
+  if (subPhase === "summary") {
+    return (
+      <div className="max-w-2xl mx-auto px-8 py-10">
+        <Trophy size={32} className="text-amber-500 dark:text-amber-300 mb-4" />
+        <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)] mb-1">学 · Fully memorized</p>
+        <h2 className="text-2xl font-semibold text-[color:var(--text)] mb-2">All {pool.length} word{pool.length === 1 ? "" : "s"} reached 100%</h2>
+        <p className="text-sm text-[color:var(--text-dim)] mb-6">Tap any word for its full page — definition, examples, and collocations.</p>
+
+        <div className="grid grid-cols-2 gap-3 mb-8">
+          {pool.map((w) => (
+            <button key={w.id} onClick={() => onOpenDetail(list.id, w.id)}
+              className="text-left rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-4 hover:ring-emerald-500/40 transition">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-lg">{VIBE_EMOJI[w.vibe] || "✨"}</span>
+                <span className="text-sm font-semibold text-[color:var(--text)]">{w.word}</span>
+              </div>
+              <p className="text-xs text-[color:var(--text-dim)] truncate">{w.def}</p>
+            </button>
+          ))}
+        </div>
+
+        <div className="flex gap-3">
+          <button onClick={() => setView("quiz")}
+            className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-[#0a0e14] font-semibold hover:from-emerald-400 hover:to-teal-400 transition">
+            <Zap size={15} /> Test these words now
+          </button>
+          <button onClick={onExit}
+            className="px-4 py-2.5 rounded-lg bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] text-[color:var(--text)] text-sm font-medium hover:ring-emerald-500/40 transition">
+            Back to Learn
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const word = pool.find((w) => w.id === currentId);
+  if (!word) {
+    return (
+      <div className="max-w-2xl mx-auto px-8 py-16 text-center">
+        <p className="text-sm text-[color:var(--text-dim)] mb-4">Nothing left to memorize in this batch right now.</p>
+        <button onClick={onExit} className="px-4 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400">Back to Learn</button>
+      </div>
+    );
+  }
+  const cur = data[currentId];
+  const doneCount = Object.values(data).filter((d) => d.done).length;
+  const coll = (word.coll || "").split(",").map((c) => c.trim()).filter(Boolean);
+  const examples = buildExamples(word);
+  const rateColor = cur.memRate >= 70 ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : cur.memRate >= 40 ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-rose-500/15 text-rose-700 dark:text-rose-300";
+
+  return (
+    <div className="max-w-2xl mx-auto px-8 py-10">
+      <div className="flex items-center justify-between mb-6">
+        <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)]">学 · Deep Memorize</p>
+        <p className="text-xs text-[color:var(--text-faint)]">{doneCount}/{pool.length} at 100%</p>
+      </div>
+      <div className="h-1.5 rounded-full bg-[color:var(--surface2)] mb-8 overflow-hidden">
+        <div className="h-full bg-emerald-500 transition-all" style={{ width: `${(doneCount / pool.length) * 100}%` }} />
+      </div>
+
+      <div className="rounded-2xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-8 min-h-[320px] flex flex-col">
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-2xl">{VIBE_EMOJI[word.vibe] || "✨"}</span>
+          <span className={`text-[11px] font-medium px-2.5 py-1 rounded-full ${rateColor}`}>{cur.memRate}% memorized</span>
+        </div>
+
+        <div className="flex-1 flex flex-col items-center justify-center text-center">
+          <h3 className="text-4xl font-bold text-[color:var(--text)] mb-5">{word.word}</h3>
+
+          {!showDetails ? (
+            <button onClick={() => setShowDetails(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 transition">
+              <Sparkles size={14} /> Show definition & details
+            </button>
+          ) : (
+            <div className="text-left w-full space-y-3 mt-2">
+              <p className="text-base text-[color:var(--text)] leading-relaxed">{word.def}</p>
+              <div className="space-y-1.5">
+                {examples.slice(0, 2).map((s, i) => (
+                  <p key={i} className="text-sm text-[color:var(--text-dim)] italic leading-relaxed">{s}</p>
+                ))}
+              </div>
+              {coll.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {coll.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 text-[color:var(--accent-text)] ring-1 ring-emerald-500/30">{c}</span>)}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {showDetails && (
+          <div className="mt-6">
+            <p className="text-xs text-[color:var(--text-faint)] mb-2 text-center">
+              {cur.memStarted ? "How well do you remember it now?" : "Did you already know this word?"}
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => rate("forgot")}
+                className="flex-1 py-2.5 rounded-lg text-sm font-medium ring-1 bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-rose-500/30 hover:bg-rose-500/15 transition">
+                I forgot
+              </button>
+              <button onClick={() => rate("blurry")}
+                className="flex-1 py-2.5 rounded-lg text-sm font-medium ring-1 bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-amber-500/30 hover:bg-amber-500/15 transition">
+                Blurry
+              </button>
+              <button onClick={() => rate("know")}
+                className="flex-1 py-2.5 rounded-lg text-sm font-medium ring-1 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-emerald-500/30 hover:bg-emerald-500/15 transition">
+                I remember it
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const LEARN_MODES = [
+  { id: "quick", label: "Quick Preview", desc: "Skim new words fast with rotating card styles." },
+  { id: "deep", label: "Deep Memorize", desc: "Self-rate each word until it's fully memorized." },
+];
+
+function LearnView({ list, updateList, setStats, registerActivity, onOpenDetail, setView }) {
+  const [phase, setPhase] = useState("home");
+  const [mode, setMode] = useState(() => load(LS.learnMode, "quick"));
+  const [sessionPool, setSessionPool] = useState([]);
+  const [memPool, setMemPool] = useState([]);
+  const [idx, setIdx] = useState(0);
+  const [revealed, setRevealed] = useState(false);
+  const [enabledStyles, setEnabledStyles] = useState(() => load(LS.learnStyles, LEARN_STYLES.map((s) => s.id)));
+
+  useEffect(() => save(LS.learnStyles, enabledStyles), [enabledStyles]);
+  useEffect(() => save(LS.learnMode, mode), [mode]);
+
+  const pending = useMemo(() => getLearnPool(list), [list]);
+  const memPending = useMemo(() => getMemorizePool(list), [list]);
+  const styles = enabledStyles.length ? enabledStyles : ["reveal"];
+
+  const toggleStyle = (id) => {
+    setEnabledStyles((cur) => {
+      if (cur.includes(id)) {
+        if (cur.length === 1) return cur;
+        return cur.filter((s) => s !== id);
+      }
+      return [...cur, id];
+    });
+  };
+
+  const start = () => {
+    if (mode === "deep") {
+      if (!memPending.length) return;
+      setMemPool(memPending);
+      setPhase("deep");
+      return;
+    }
+    if (!pending.length) return;
+    setSessionPool(pending);
+    setIdx(0);
+    setRevealed(false);
+    setPhase("session");
+  };
+
+  const finish = (pool) => {
+    const today = todayStr();
+    updateList(list.id, (l) => ({
+      ...l,
+      words: l.words.map((w) => {
+        if (!pool.some((p) => p.id === w.id)) return w;
+        return { ...w, seen: true, box: 1, due: addDays(today, LEITNER_DAYS[1]), learnedOn: today };
+      }),
+    }));
+    setStats((s) => ({ ...s, dailyLearned: { ...(s.dailyLearned || {}), [today]: ((s.dailyLearned || {})[today] || 0) + pool.length } }));
+    registerActivity();
+    setPhase("summary");
+  };
+
+  const next = () => {
+    if (idx + 1 >= sessionPool.length) {
+      finish(sessionPool);
+    } else {
+      setIdx(idx + 1);
+      setRevealed(false);
+    }
+  };
+
+  if (phase === "deep") {
+    return (
+      <MemorizeSession list={list} pool={memPool} updateList={updateList} setStats={setStats}
+        registerActivity={registerActivity} onOpenDetail={onOpenDetail} setView={setView}
+        onExit={() => setPhase("home")} />
+    );
+  }
+
+  if (phase === "home") {
+    const activePending = mode === "deep" ? memPending : pending;
+    return (
+      <div className="max-w-2xl mx-auto px-8 py-16 text-center">
+        <GraduationCap size={36} className="mx-auto text-[color:var(--accent-text)] mb-4" />
+        <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)] mb-1">学 · Learn</p>
+        <h2 className="text-2xl font-semibold text-[color:var(--text)] mb-3">Ready to meet today's words?</h2>
+
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          {LEARN_MODES.map((m) => (
+            <button key={m.id} onClick={() => setMode(m.id)}
+              className={`text-left rounded-xl ring-1 p-4 transition ${
+                mode === m.id ? "bg-emerald-500/10 ring-emerald-500/40" : "bg-[color:var(--surface)] ring-[color:var(--border)] hover:ring-emerald-500/20"}`}>
+              <p className={`text-sm font-semibold ${mode === m.id ? "text-[color:var(--accent-text)]" : "text-[color:var(--text)]"}`}>{m.label}</p>
+              <p className="text-xs text-[color:var(--text-faint)] mt-1">{m.desc}</p>
+            </button>
+          ))}
+        </div>
+
+        <p className="text-sm text-[color:var(--text-dim)] mb-8">
+          {activePending.length
+            ? mode === "deep"
+              ? `${activePending.length} word${activePending.length === 1 ? "" : "s"} from "${list.name}" aren't fully memorized yet.`
+              : `${activePending.length} new word${activePending.length === 1 ? "" : "s"} from "${list.name}". Pick how you want to see them below.`
+            : mode === "deep"
+              ? "Everything in this list is already memorized. Add more words, or check Quick Test for spaced review."
+              : "No new words waiting right now. Add more to this list, or head to Quick Test to review what you've already learned."}
+        </p>
+
+        {mode === "quick" && (
+          <div className="text-left rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-5 mb-8">
+            <p className="text-xs uppercase tracking-wide text-[color:var(--text-faint)] mb-3">Learning styles</p>
+            <div className="space-y-2">
+              {LEARN_STYLES.map((s) => {
+                const on = enabledStyles.includes(s.id);
+                return (
+                  <button key={s.id} onClick={() => toggleStyle(s.id)}
+                    className={`w-full flex items-start gap-3 px-3 py-2.5 rounded-lg ring-1 text-left transition ${
+                      on ? "bg-emerald-500/10 ring-emerald-500/40" : "ring-[color:var(--border)] hover:ring-emerald-500/20"}`}>
+                    <div className={`mt-0.5 h-4 w-4 rounded flex items-center justify-center shrink-0 transition ${
+                      on ? "bg-emerald-500" : "ring-1 ring-[color:var(--text-faint)]"}`}>
+                      {on && <Check size={12} className="text-[#0a0e14]" strokeWidth={3} />}
+                    </div>
+                    <div>
+                      <p className={`text-sm font-medium ${on ? "text-[color:var(--accent-text)]" : "text-[color:var(--text)]"}`}>{s.label}</p>
+                      <p className="text-xs text-[color:var(--text-faint)] mt-0.5">{s.desc}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {mode === "deep" && (
+          <div className="text-left rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-5 mb-8">
+            <p className="text-xs uppercase tracking-wide text-[color:var(--text-faint)] mb-2">How it works</p>
+            <p className="text-xs text-[color:var(--text-dim)] leading-relaxed">
+              Each word shows up alone first. Reveal the definition, examples, and collocations, then rate yourself. Words you forget come back around sooner; words you know keep climbing toward 100%. The session ends once every word in the batch hits 100%.
+            </p>
+          </div>
+        )}
+
+        <button onClick={start} disabled={!activePending.length}
+          className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-[#0a0e14] font-semibold hover:from-emerald-400 hover:to-teal-400 disabled:opacity-40 transition">
+          <GraduationCap size={16} /> Start learning
+        </button>
+        {!activePending.length && (
+          <div className="mt-4">
+            <button onClick={() => setView("quiz")} className="text-sm text-[color:var(--accent-text)] hover:underline">Go review instead →</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (phase === "session") {
+    const word = sessionPool[idx];
+    const style = styles[idx % styles.length];
+    return (
+      <div className="max-w-2xl mx-auto px-8 py-10">
+        <div className="flex items-center justify-between mb-6">
+          <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)]">学 · Learning</p>
+          <p className="text-xs text-[color:var(--text-faint)]">{idx + 1}/{sessionPool.length}</p>
+        </div>
+        <div className="h-1.5 rounded-full bg-[color:var(--surface2)] mb-8 overflow-hidden">
+          <div className="h-full bg-emerald-500 transition-all" style={{ width: `${((idx + 1) / sessionPool.length) * 100}%` }} />
+        </div>
+
+        <div className="rounded-2xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-8 min-h-[280px] flex flex-col justify-between">
+          <div>
+            <span className="text-2xl">{VIBE_EMOJI[word.vibe] || "✨"}</span>
+            <div className="mt-3">
+              <LearnCard word={word} style={style} revealed={revealed} onReveal={() => setRevealed(true)} />
+            </div>
+          </div>
+          {(style === "story" || revealed) && (
+            <button onClick={next}
+              className="mt-6 w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 transition">
+              {idx + 1 >= sessionPool.length ? "Finish" : "Got it — next"} <ChevronRight size={15} />
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // phase === "summary"
+  return (
+    <div className="max-w-2xl mx-auto px-8 py-10">
+      <Trophy size={32} className="text-amber-500 dark:text-amber-300 mb-4" />
+      <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)] mb-1">学 · Nice work</p>
+      <h2 className="text-2xl font-semibold text-[color:var(--text)] mb-2">You learned {sessionPool.length} new word{sessionPool.length === 1 ? "" : "s"} today</h2>
+      <p className="text-sm text-[color:var(--text-dim)] mb-6">Tap any word for its full page — definition, examples, and collocations.</p>
+
+      <div className="grid grid-cols-2 gap-3 mb-8">
+        {sessionPool.map((w) => (
+          <button key={w.id} onClick={() => onOpenDetail(list.id, w.id)}
+            className="text-left rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-4 hover:ring-emerald-500/40 transition">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-lg">{VIBE_EMOJI[w.vibe] || "✨"}</span>
+              <span className="text-sm font-semibold text-[color:var(--text)]">{w.word}</span>
+            </div>
+            <p className="text-xs text-[color:var(--text-dim)] truncate">{w.def}</p>
+          </button>
+        ))}
+      </div>
+
+      <div className="flex gap-3">
+        <button onClick={() => setView("quiz")}
+          className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-[#0a0e14] font-semibold hover:from-emerald-400 hover:to-teal-400 transition">
+          <Zap size={15} /> Test these words now
+        </button>
+        <button onClick={() => setView("dashboard")}
+          className="px-4 py-2.5 rounded-lg bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] text-[color:var(--text)] text-sm font-medium hover:ring-emerald-500/40 transition">
+          Back to dashboard
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Quick Test / Quiz ---------------- */
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function buildQuestion(word, allWords) {
+  const others = allWords.filter((w) => w.word.toLowerCase() !== word.word.toLowerCase() && w.def);
+  const canMcq = others.length >= 3;
+  const types = canMcq ? ["word2def", "def2word", "fill"] : ["fill"];
+  const type = types[Math.floor(Math.random() * types.length)];
+
+  if (type === "word2def") {
+    const distractors = shuffle(others).slice(0, 3).map((w) => w.def);
+    return { type, word, choices: shuffle([word.def, ...distractors]), answer: word.def };
+  }
+  if (type === "def2word") {
+    const distractors = shuffle(others).slice(0, 3).map((w) => w.word);
+    return { type, word, choices: shuffle([word.word, ...distractors]), answer: word.word };
+  }
+  const coll = (word.coll || "").split(",").map((c) => c.trim()).filter(Boolean);
+  const sentence = `As the report noted, the ____ approach proved essential — a ${word.vibe} choice that ${coll[0] ? `paired naturally with "${coll[0]}."` : "shaped the whole argument."}`;
+  return { type, word, sentence, def: word.def, answer: word.word };
+}
+
+function QuizView({ list, allWords, updateList, setStats, registerActivity }) {
+  const [phase, setPhase] = useState("home");
+  const [pool, setPool] = useState([]);
+  const [sessionState, setSessionState] = useState({});
+  const [current, setCurrent] = useState(null);
+  const [question, setQuestion] = useState(null);
+  const [chosen, setChosen] = useState(null);
+  const [textAnswer, setTextAnswer] = useState("");
+  const [feedback, setFeedback] = useState(null);
+
+  const todayPool = useMemo(() => getTodayPool(list), [list]);
+
+  const pickNext = (poolArr, state, avoidId) => {
+    const remaining = poolArr.filter((w) => !state[w.id]?.done);
+    if (!remaining.length) return null;
+    const candidates = remaining.length > 1 ? remaining.filter((w) => w.id !== avoidId) : remaining;
+    const source = candidates.length ? candidates : remaining;
+    const weights = source.map((w) => 1 + (state[w.id]?.wrong || 0) * 3);
+    const total = weights.reduce((a, b) => a + b, 0);
+    let r = Math.random() * total;
+    for (let i = 0; i < source.length; i++) {
+      r -= weights[i];
+      if (r <= 0) return source[i];
+    }
+    return source[source.length - 1];
+  };
+
+  const start = () => {
+    if (!todayPool.length) return;
+    const initState = {};
+    todayPool.forEach((w) => { initState[w.id] = { wrong: 0, done: false }; });
+    setSessionState(initState);
+    setPool(todayPool);
+    const first = pickNext(todayPool, initState, null);
+    setCurrent(first);
+    setQuestion(buildQuestion(first, allWords));
+    setChosen(null); setTextAnswer(""); setFeedback(null);
+    setPhase("quiz");
+  };
+
+  const submit = (answerGiven) => {
+    if (feedback) return;
+    const correct = question.type === "fill"
+      ? answerGiven.trim().toLowerCase() === question.answer.toLowerCase()
+      : answerGiven === question.answer;
+    setFeedback({ correct, answer: question.answer });
+    setSessionState((s) => {
+      const prev = s[current.id] || { wrong: 0, done: false };
+      return { ...s, [current.id]: correct ? { ...prev, done: true } : { ...prev, wrong: prev.wrong + 1 } };
+    });
+  };
+
+  const next = () => {
+    setSessionState((s) => {
+      const nextWord = pickNext(pool, s, current.id);
+      if (!nextWord) {
+        setPhase("recap");
+      } else {
+        setCurrent(nextWord);
+        setQuestion(buildQuestion(nextWord, allWords));
+      }
+      return s;
+    });
+    setChosen(null); setTextAnswer(""); setFeedback(null);
+  };
+
+  const finishSession = () => {
+    const today = todayStr();
+    let newlyIntroduced = 0;
+    updateList(list.id, (l) => ({
+      ...l,
+      words: l.words.map((w) => {
+        const st = sessionState[w.id];
+        if (!st) return w;
+        if (!w.seen) newlyIntroduced++;
+        const struggled = st.wrong > 0;
+        const newBox = struggled ? Math.max(1, w.box || 1) : Math.min(6, (w.box || 0) + 1);
+        return { ...w, seen: true, learnedOn: w.learnedOn || today, box: newBox, due: addDays(today, LEITNER_DAYS[Math.min(newBox, LEITNER_DAYS.length - 1)]),
+          wrongCount: w.wrongCount + st.wrong, correctCount: w.correctCount + (struggled ? 0 : 1) };
+      }),
+    }));
+    setStats((s) => ({ ...s, sessions: s.sessions + 1, dailyLearned: { ...(s.dailyLearned || {}), [today]: ((s.dailyLearned || {})[today] || 0) + newlyIntroduced } }));
+    registerActivity();
+    setPhase("done");
+  };
+
+  if (phase === "home") {
+    return (
+      <div className="max-w-2xl mx-auto px-8 py-16 text-center">
+        <Zap size={36} className="mx-auto text-[color:var(--accent-text)] mb-4" />
+        <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)] mb-1">测 · Quick Test</p>
+        <h2 className="text-2xl font-semibold text-[color:var(--text)] mb-3">Ready to test today's words?</h2>
+        <p className="text-sm text-[color:var(--text-dim)] mb-8">
+          {todayPool.length
+            ? `${todayPool.length} word${todayPool.length === 1 ? "" : "s"} queued from "${list.name}". Words you miss will come back around more often.`
+            : "No words are due right now — add words to this list or check back tomorrow."}
+        </p>
+        <button onClick={start} disabled={!todayPool.length}
+          className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-[#0a0e14] font-semibold hover:from-emerald-400 hover:to-teal-400 disabled:opacity-40 transition">
+          <Sparkles size={16} /> Start quick test
+        </button>
+      </div>
+    );
+  }
+
+  if (phase === "quiz" && current) {
+    const doneCount = Object.values(sessionState).filter((s) => s.done).length;
+    return (
+      <div className="max-w-2xl mx-auto px-8 py-10">
+        <div className="flex items-center justify-between mb-6">
+          <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)]">测 · Quick Test</p>
+          <p className="text-xs text-[color:var(--text-faint)]">{doneCount}/{pool.length} mastered this round</p>
+        </div>
+        <div className="h-1.5 rounded-full bg-[color:var(--surface2)] mb-8 overflow-hidden">
+          <div className="h-full bg-emerald-500 transition-all" style={{ width: `${(doneCount / pool.length) * 100}%` }} />
+        </div>
+
+        <div className="rounded-2xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-8">
+          <span className="text-2xl">{VIBE_EMOJI[current.vibe] || "✨"}</span>
+
+          {question.type === "word2def" && (
+            <>
+              <p className="text-xs uppercase tracking-wide text-[color:var(--text-faint)] mt-3 mb-2">What does this word mean?</p>
+              <h3 className="text-3xl font-bold text-[color:var(--text)] mb-6">{current.word}</h3>
+              <div className="space-y-2">
+                {question.choices.map((c, i) => (
+                  <ChoiceButton key={i} label={c} selected={chosen === c} feedback={feedback} isAnswer={c === question.answer}
+                    onClick={() => { setChosen(c); submit(c); }} />
+                ))}
+              </div>
+            </>
+          )}
+
+          {question.type === "def2word" && (
+            <>
+              <p className="text-xs uppercase tracking-wide text-[color:var(--text-faint)] mt-3 mb-2">Which word matches this definition?</p>
+              <h3 className="text-lg font-medium text-[color:var(--text)] mb-6 leading-relaxed">{current.def}</h3>
+              <div className="space-y-2">
+                {question.choices.map((c, i) => (
+                  <ChoiceButton key={i} label={c} selected={chosen === c} feedback={feedback} isAnswer={c === question.answer}
+                    onClick={() => { setChosen(c); submit(c); }} />
+                ))}
+              </div>
+            </>
+          )}
+
+          {question.type === "fill" && (
+            <>
+              <p className="text-xs uppercase tracking-wide text-[color:var(--text-faint)] mt-3 mb-2">Fill in the blank</p>
+              <p className="text-lg text-[color:var(--text)] mb-2 leading-relaxed">{question.sentence}</p>
+              <p className="text-xs text-[color:var(--text-faint)] mb-4">Hint: {question.def}</p>
+              <input value={textAnswer} onChange={(e) => setTextAnswer(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && submit(textAnswer)}
+                disabled={!!feedback} placeholder="Type the word…"
+                className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+              {!feedback && (
+                <button onClick={() => submit(textAnswer)} disabled={!textAnswer.trim()}
+                  className="mt-3 px-4 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400 disabled:opacity-40 transition">
+                  Check
+                </button>
+              )}
+              {feedback && (
+                <p className={`mt-3 text-sm ${feedback.correct ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300"}`}>
+                  {feedback.correct ? "Correct!" : `Not quite — the answer is "${feedback.answer}".`}
+                </p>
+              )}
+            </>
+          )}
+
+          {feedback && (
+            <button onClick={next} className="mt-6 w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] text-[color:var(--text)] text-sm font-medium hover:ring-emerald-500/40 transition">
+              Next <ChevronRight size={15} />
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === "recap") {
+    return (
+      <div className="max-w-2xl mx-auto px-8 py-10">
+        <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)] mb-1">测 · Recap</p>
+        <h2 className="text-2xl font-semibold text-[color:var(--text)] mb-2">Nice work — here's everything you covered</h2>
+        <p className="text-sm text-[color:var(--text-dim)] mb-6">Take one more look at the definitions before you save this round.</p>
+        <div className="space-y-2 mb-8">
+          {pool.map((w) => {
+            const st = sessionState[w.id];
+            const nailed = st && st.wrong === 0;
+            return (
+              <div key={w.id} className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] px-5 py-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-base font-semibold text-[color:var(--text)]">{w.word}</span>
+                  <span className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full ${nailed ? "bg-emerald-500/15 text-[color:var(--accent-text)]" : "bg-amber-500/15 text-amber-700 dark:text-amber-300"}`}>
+                    {nailed ? "nailed it" : "needs practice"}
+                  </span>
+                </div>
+                <p className="text-sm text-[color:var(--text-dim)]">{w.def}</p>
+              </div>
+            );
+          })}
+        </div>
+        <button onClick={finishSession}
+          className="w-full flex items-center justify-center gap-1.5 px-4 py-3 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-[#0a0e14] font-semibold hover:from-emerald-400 hover:to-teal-400 transition">
+          <Check size={16} /> Save & finish
+        </button>
+      </div>
+    );
+  }
+
+  if (phase === "done") {
+    return (
+      <div className="max-w-md mx-auto px-8 py-24 text-center">
+        <Trophy size={40} className="mx-auto text-amber-500 dark:text-amber-300 mb-4" />
+        <h2 className="text-2xl font-semibold text-[color:var(--text)] mb-2">Session saved!</h2>
+        <p className="text-sm text-[color:var(--text-dim)] mb-8">Your progress on these words has been updated. Come back tomorrow for the next round.</p>
+        <button onClick={() => setPhase("home")}
+          className="px-5 py-2.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400 transition">
+          Back to test menu
+        </button>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function ChoiceButton({ label, selected, feedback, isAnswer, onClick }) {
+  let style = "ring-[color:var(--border)] text-[color:var(--text)] hover:ring-emerald-500/40";
+  if (feedback) {
+    if (isAnswer) style = "ring-emerald-500/50 bg-emerald-500/15 text-[color:var(--accent-text)]";
+    else if (selected) style = "ring-rose-500/50 bg-rose-500/15 text-rose-700 dark:text-rose-300";
+    else style = "ring-[color:var(--border)] text-[color:var(--text-faint)] opacity-60";
+  }
+  return (
+    <button onClick={onClick} disabled={!!feedback}
+      className={`w-full text-left px-4 py-3 rounded-lg ring-1 text-sm transition ${style}`}>
+      {label}
+    </button>
+  );
+}
+
+/* ---------------- Practice Sandbox ---------------- */
+function Sandbox({ words, apiKey, model, setStats, registerActivity, promptKey }) {
+  const [text, setText] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+  const [error, setError] = useState(null);
+
+  const lower = text.toLowerCase();
+  const used = useMemo(() => {
+    const set = {};
+    words.forEach((w) => {
+      const re = new RegExp(`\\b${w.word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").toLowerCase()}\\w*`, "i");
+      set[w.id] = re.test(lower);
+    });
+    return set;
+  }, [lower, words]);
+
+  const usedWords = words.filter((w) => used[w.id]).map((w) => w.word);
+
+  const analyze = async () => {
+    if (!apiKey) { promptKey(); return; }
+    if (!text.trim()) return;
+    setLoading(true); setError(null); setFeedback(null);
+
+    const system = `You are an expert writing coach for advanced ESL/high-level writers. Evaluate how the student used their target vocabulary in a paragraph. Return ONLY valid JSON (no markdown, no preamble) matching exactly this shape:
+{
+  "accuracy": [{"word": string, "verdict": "excellent"|"nuance"|"error", "note": string}],
+  "collocations": [{"phrase": string, "verdict": "excellent"|"nuance"|"error", "note": string}],
+  "rewrite": string,
+  "summary": string
+}
+verdict meanings: "excellent" = correct semantic context and tone; "nuance" = usable but a minor adjustment would sharpen it; "error" = wrong meaning, register, or collocation.`;
+
+    const user = `Target words the student aimed to use: ${words.map((w) => `${w.word} (${w.vibe}; collocations: ${w.coll})`).join(" | ")}
+Words detected in the text: ${usedWords.join(", ") || "none"}
+
+Student paragraph:
+"""${text}"""
+
+Assess: (1) Contextual accuracy — right meaning and tone per word. (2) Collocation check — natural pairings. (3) A rewrite that sounds more natural/professional. Respond with the JSON only.`;
+
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 1500,
+          system,
+          messages: [{ role: "user", content: user }],
+        }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e?.error?.message || `Request failed (${res.status})`);
+      }
+      const data = await res.json();
+      const raw = data.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
+      const clean = raw.replace(/```json|```/g, "").trim();
+      const parsed = JSON.parse(clean);
+      setFeedback(parsed);
+      setStats((s) => ({ ...s, sessions: (s.sessions || 0) + 1 }));
+      registerActivity();
+    } catch (err) {
+      setError(err.message || "Something went wrong.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const vColor = (v) => ({
+    excellent: "text-emerald-700 dark:text-emerald-100 bg-emerald-500/10 dark:bg-emerald-500/15 ring-emerald-500/30",
+    nuance: "text-amber-700 dark:text-amber-100 bg-amber-500/10 dark:bg-amber-500/15 ring-amber-500/30",
+    error: "text-rose-700 dark:text-rose-100 bg-rose-500/10 dark:bg-rose-500/15 ring-rose-500/30",
+  }[v] || "text-[color:var(--text-dim)] bg-[color:var(--surface2)] ring-[color:var(--border)]");
+
+  return (
+    <div className="h-full flex flex-col">
+      <header className="px-8 pt-8 pb-4 shrink-0">
+        <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)] mb-1">写 · Practice Sandbox</p>
+        <h2 className="text-2xl font-semibold text-[color:var(--text)]">Write, then let Claude read it back</h2>
+      </header>
+
+      <div className="flex-1 grid grid-cols-[280px_1fr] gap-0 min-h-0 border-t border-[color:var(--border)]">
+        <div className="border-r border-[color:var(--border)] overflow-y-auto p-5">
+          <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-dim)] mb-3">Target checklist</p>
+          <div className="space-y-2">
+            {words.map((w) => {
+              const on = used[w.id];
+              return (
+                <div key={w.id} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg ring-1 transition ${
+                  on ? "bg-emerald-500/15 ring-emerald-500/40" : "bg-[color:var(--surface)] ring-[color:var(--border)]"}`}>
+                  <div className={`h-4 w-4 rounded flex items-center justify-center transition ${
+                    on ? "bg-emerald-500" : "ring-1 ring-[color:var(--text-faint)]"}`}>
+                    {on && <Check size={12} className="text-[#0a0e14]" strokeWidth={3} />}
+                  </div>
+                  <span className={`text-sm ${on ? "text-[color:var(--accent-text)]" : "text-[color:var(--text-dim)]"}`}>{w.word}</span>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-[11px] text-[color:var(--text-faint)] mt-4">{usedWords.length} of {words.length} used</p>
+        </div>
+
+        <div className="overflow-y-auto p-6 flex flex-col">
+          <div className="relative">
+            <textarea value={text} onChange={(e) => setText(e.target.value)}
+              placeholder="Write your paragraph here. Aim to work in the target words naturally…"
+              className="w-full h-64 bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] rounded-xl p-5 text-[15px] leading-relaxed text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/40 resize-none" />
+            <span className="absolute bottom-3 right-4 text-[11px] text-[color:var(--text-faint)]">{text.length} chars</span>
+          </div>
+
+          <div className="flex justify-end mt-4">
+            <button onClick={analyze} disabled={loading}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-[#0a0e14] text-sm font-semibold hover:from-emerald-400 hover:to-teal-400 disabled:opacity-50 transition">
+              {loading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+              {loading ? "Analyzing…" : "Analyze with Claude"}
+            </button>
+          </div>
+
+          {error && (
+            <div className="mt-4 rounded-lg bg-rose-500/15 ring-1 ring-rose-500/30 px-4 py-3 text-sm text-rose-700 dark:text-rose-100">
+              {error}
+            </div>
+          )}
+
+          {feedback && (
+            <div className="mt-6 space-y-6">
+              {feedback.summary && (
+                <p className="text-sm text-[color:var(--text-dim)] leading-relaxed border-l-2 border-emerald-500/50 pl-4">{feedback.summary}</p>
+              )}
+
+              <FeedbackBlock title="Contextual accuracy" items={feedback.accuracy} labelKey="word" vColor={vColor} />
+              <FeedbackBlock title="Collocation check" items={feedback.collocations} labelKey="phrase" vColor={vColor} />
+
+              {feedback.rewrite && (
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-dim)] mb-2">Suggested rewrite</p>
+                  <div className="rounded-xl bg-[color:var(--surface2)] ring-1 ring-emerald-500/25 p-5">
+                    <p className="text-[15px] text-[color:var(--text)] leading-relaxed">{feedback.rewrite}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FeedbackBlock({ title, items, labelKey, vColor }) {
+  if (!items || items.length === 0) return null;
+  return (
+    <div>
+      <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-dim)] mb-2">{title}</p>
+      <div className="space-y-2">
+        {items.map((it, i) => (
+          <div key={i} className={`rounded-lg ring-1 px-4 py-3 ${vColor(it.verdict)}`}>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-sm font-medium">{it[labelKey]}</span>
+              <span className="text-[10px] uppercase tracking-wide opacity-80">{it.verdict}</span>
+            </div>
+            <p className="text-sm opacity-95 leading-relaxed">{it.note}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Key Modal ---------------- */
+function KeyModal({ onClose, onGo }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-6" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-8 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+        <div className="h-14 w-14 rounded-2xl bg-amber-500/15 ring-1 ring-amber-500/30 flex items-center justify-center mx-auto mb-5">
+          <Key className="text-amber-500 dark:text-amber-400" size={24} />
+        </div>
+        <h3 className="text-lg font-semibold text-[color:var(--text)] mb-2">Add your API key first</h3>
+        <p className="text-sm text-[color:var(--text-dim)] mb-6 leading-relaxed">
+          Claude needs your Anthropic API key to analyze your writing. Add it in Settings — it stays in your browser.
+        </p>
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-lg text-sm text-[color:var(--text-dim)] hover:text-[color:var(--text)] ring-1 ring-[color:var(--border)]">Not now</button>
+          <button onClick={onGo} className="flex-1 px-4 py-2.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400">Go to Settings</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Root() {
+  const [authed, setAuthed] = useState(() => load(LS.loggedIn, false));
+
+  useEffect(() => {
+    const theme = load(LS.theme, "dark");
+    const eff = theme === "system" ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : theme;
+    document.documentElement.setAttribute("data-theme", eff);
+  }, []);
+
+  if (!authed) return <AuthGate onAuth={() => setAuthed(true)} />;
+  return <App onLogout={() => { save(LS.loggedIn, false); setAuthed(false); }} />;
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<Root />);
+</script>
+<script>
+  var __src = document.getElementById("app-source").textContent;
+  var __out = Babel.transform(__src, { presets: [["react", { runtime: "classic" }]] }).code;
+  (0, eval)(__out);
+</script>
+</body>
+</html>
