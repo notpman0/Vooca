@@ -27,6 +27,35 @@
   ::placeholder { color: var(--text-faint); }
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; }
+
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes pop { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); } }
+  @keyframes softPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.35); } 50% { box-shadow: 0 0 0 8px rgba(16,185,129,0); } }
+  @keyframes floatIn { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+  @keyframes confettiFall { 0% { transform: translateY(-20px) rotate(0deg); opacity: 1; } 100% { transform: translateY(140px) rotate(360deg); opacity: 0; } }
+
+  .animate-fade-up { animation: fadeUp 0.38s ease-out both; }
+  .animate-fade-in { animation: fadeIn 0.3s ease-out both; }
+  .animate-pop { animation: pop 0.5s cubic-bezier(.34,1.56,.64,1) both; }
+  .animate-float-in { animation: floatIn 0.3s ease-out both; }
+  .stagger > * { animation: fadeUp 0.4s ease-out both; }
+  .stagger > *:nth-child(1) { animation-delay: 0.02s; }
+  .stagger > *:nth-child(2) { animation-delay: 0.07s; }
+  .stagger > *:nth-child(3) { animation-delay: 0.12s; }
+  .stagger > *:nth-child(4) { animation-delay: 0.17s; }
+  .stagger > *:nth-child(5) { animation-delay: 0.22s; }
+  .stagger > *:nth-child(6) { animation-delay: 0.27s; }
+
+  .btn-pulse:not(:disabled) { animation: softPulse 2.6s ease-in-out infinite; }
+  .btn-pulse:hover { animation: none; }
+
+  .press-scale { transition: transform 0.12s ease, filter 0.12s ease; }
+  .press-scale:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.04); }
+  .press-scale:active:not(:disabled) { transform: scale(0.97); }
+
+  .confetti-piece { position: absolute; top: 0; width: 6px; height: 10px; animation: confettiFall 1.1s ease-in forwards; }
 </style>
 </head>
 <body>
@@ -73,7 +102,7 @@ const Target = (p) => <Icon {...p} path='<circle cx="12" cy="12" r="10"/><circle
 const Zap = (p) => <Icon {...p} path='<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>' />;
 const GraduationCap = (p) => <Icon {...p} path='<path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1.5 2.5 3 6 3s6-1.5 6-3v-5"/><path d="M22 10v6"/>' />;
 const FileText = (p) => <Icon {...p} path='<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/>' />;
-const BrandMark = (p) => <Icon {...p} path='<path d="M12 7c-2-1.6-4.7-2.4-7.5-2.4v12.8c2.8 0 5.5.8 7.5 2.4 2-1.6 4.7-2.4 7.5-2.4V4.6C16.7 4.6 14 5.4 12 7Z"/><path d="M12 7v12.8"/><path d="M19.3 2.2l.5 1.3 1.3.5-1.3.5-.5 1.3-.5-1.3-1.3-.5 1.3-.5.5-1.3Z" fill="currentColor" stroke="none"/>' />;
+const BrandMark = (p) => <Icon {...p} path='<path d="M6.5 5.2 4 2M17.5 5.2 20 2"/><path d="M12 4c-3.6 0-6.3 2.6-6.3 6.2v3c0 3 2.4 5.4 5.4 5.4h1.8c3 0 5.4-2.4 5.4-5.4v-3C18.3 6.6 15.6 4 12 4Z"/><circle cx="9.3" cy="10.6" r="1.5" fill="currentColor" stroke="none"/><circle cx="14.7" cy="10.6" r="1.5" fill="currentColor" stroke="none"/><path d="M11 13.6h2l-1 2-1-2Z" fill="currentColor" stroke="none"/>' />;
 
 /* ---------------- Storage ---------------- */
 const LS = {
@@ -81,11 +110,21 @@ const LS = {
   lists: "vcw_lists", activeList: "vcw_activeList",
   stats: "vcw_stats", streak: "vcw_streak", learnStyles: "vcw_learnStyles", learnMode: "vcw_learnMode",
   account: "vcw_account", loggedIn: "vcw_loggedIn",
+  quizStyles: "vcw_quizStyles", quizMode: "vcw_quizMode",
 };
 const LEARN_STYLES = [
   { id: "reveal", label: "Recall first", desc: "See the word, try to recall its meaning, then reveal." },
   { id: "context", label: "Context clues", desc: "Guess the word from a sentence with a blank." },
   { id: "story", label: "Read & remember", desc: "Straight read: definition, examples, collocations." },
+];
+const QUIZ_STYLES = [
+  { id: "word2def", label: "Word → definition", desc: "See the word, pick the right meaning." },
+  { id: "def2word", label: "Definition → word", desc: "See the meaning, pick the right word." },
+  { id: "fill", label: "Fill in the blank", desc: "Type the word to complete a sentence." },
+];
+const QUIZ_MODES = [
+  { id: "adaptive", label: "Adaptive Test", desc: "Multiple-choice & fill-in questions, missed words repeat." },
+  { id: "deep", label: "Deep Memorize", desc: "Self-rate each due word until it's back to 100%." },
 ];
 const MODELS = [
   { id: "claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet" },
@@ -243,6 +282,11 @@ function getTodayPool(list) {
   const pool = [...newOnes, ...dueReview];
   return pool.length ? pool : words.filter((w) => w.seen).slice(0, 10);
 }
+function getReviewMemorizePool(list) {
+  const today = getTodayPool(list);
+  const unfinished = today.filter((w) => (w.memRate || 0) < 100);
+  return unfinished.length ? unfinished : today.slice(0, 10);
+}
 
 /* ---------------- Auth gate ---------------- */
 function AuthGate({ onAuth }) {
@@ -336,9 +380,9 @@ function App({ onLogout }) {
   const [apiKey, setApiKey] = useState(() => load(LS.key, ""));
   const [model, setModel] = useState(() => load(LS.model, MODELS[0].id));
   const [theme, setTheme] = useState(() => load(LS.theme, "dark"));
-  const [lists, setLists] = useState(() => load(LS.lists, [
+  const [lists, setLists] = useState(() => repairListIds(load(LS.lists, [
     { id: "default", name: "My Words", source: "custom", plan: null, createdAt: Date.now(), words: SEED_WORDS },
-  ]));
+  ])));
   const [activeListId, setActiveListId] = useState(() => load(LS.activeList, "default"));
   const [stats, setStats] = useState(() => load(LS.stats, { sessions: 0, dailyLearned: {} }));
   const [streak, setStreak] = useState(() => load(LS.streak, { count: 0, last: null }));
@@ -445,9 +489,11 @@ function App({ onLogout }) {
 
       <main className="flex-1 overflow-y-auto h-screen">
         {detailWord ? (
-          <WordDetailPage listId={detailWord.listId} wordId={detailWord.wordId} lists={lists} onBack={() => setDetailWord(null)} />
+          <div key="detail" className="animate-fade-up">
+            <WordDetailPage listId={detailWord.listId} wordId={detailWord.wordId} lists={lists} onBack={() => setDetailWord(null)} />
+          </div>
         ) : (
-          <>
+          <div key={view} className="animate-fade-up">
             {view === "dashboard" && (
               <Dashboard {...{ apiKey, masteredCount: totalMastered, totalIntroduced, todayLearned, stats, streak, activeList, learnPending, setView }} />
             )}
@@ -464,7 +510,7 @@ function App({ onLogout }) {
             )}
             {view === "quiz" && activeList && (
               <QuizView list={activeList} allWords={allWords} updateList={updateList} setStats={setStats}
-                registerActivity={registerActivity} />
+                registerActivity={registerActivity} onOpenDetail={openDetail} setView={setView} />
             )}
             {view === "sandbox" && activeList && (
               <Sandbox {...{ words: activeList.words, apiKey, model, setStats, registerActivity, promptKey: () => setShowKeyModal(true) }} />
@@ -472,7 +518,7 @@ function App({ onLogout }) {
             {view === "settings" && (
               <SettingsView {...{ apiKey, setApiKey, model, setModel, theme, setTheme, onLogout }} />
             )}
-          </>
+          </div>
         )}
       </main>
 
@@ -624,9 +670,9 @@ function Dashboard({ apiKey, masteredCount, totalIntroduced, todayLearned, stats
         <h2 className="text-2xl font-semibold text-[color:var(--text)]">Your writing cockpit</h2>
       </header>
 
-      <div className="mb-8 rounded-2xl bg-gradient-to-br from-emerald-500/15 to-teal-500/5 ring-1 ring-emerald-500/25 p-6 flex items-center gap-6">
-        <div className="h-20 w-20 rounded-full flex items-center justify-center relative shrink-0"
-          style={{ background: `conic-gradient(#10b981 ${pct}%, rgba(120,120,120,0.18) ${pct}%)` }}>
+      <div className="mb-8 rounded-2xl bg-gradient-to-br from-emerald-500/15 to-teal-500/5 ring-1 ring-emerald-500/25 p-6 flex items-center gap-6 animate-fade-up">
+        <div className="h-20 w-20 rounded-full flex items-center justify-center relative shrink-0 transition-transform duration-300 hover:scale-105"
+          style={{ background: `conic-gradient(#10b981 ${pct}%, rgba(120,120,120,0.18) ${pct}%)`, transition: "background 0.6s ease" }}>
           <div className="rounded-full bg-[color:var(--surface)] flex items-center justify-center text-sm font-bold text-[color:var(--text)]" style={{ height: 60, width: 60 }}>
             {pct}%
           </div>
@@ -639,7 +685,7 @@ function Dashboard({ apiKey, masteredCount, totalIntroduced, todayLearned, stats
             {todayLearned >= goal ? "Today's goal is done — great work!" : `${goal - todayLearned} more word${goal - todayLearned === 1 ? "" : "s"} to hit today's goal.`}
           </p>
           <button onClick={() => setView(learnPending ? "learn" : "quiz")}
-            className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400 transition">
+            className="press-scale btn-pulse mt-3 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400 transition">
             {learnPending ? <GraduationCap size={14} /> : <Zap size={14} />}
             {learnPending ? "Start today's session" : "Review today's words"}
           </button>
@@ -656,9 +702,9 @@ function Dashboard({ apiKey, masteredCount, totalIntroduced, todayLearned, stats
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4 mb-8">
+      <div className="grid grid-cols-2 gap-4 mb-8 stagger">
         {cards.map((c) => (
-          <div key={c.label} className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-5">
+          <div key={c.label} className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:shadow-black/5 hover:ring-emerald-500/25">
             <c.icon size={18} className={c.tint} />
             <p className="text-2xl font-semibold text-[color:var(--text)] mt-3">{c.value}</p>
             <p className="text-xs text-[color:var(--text-dim)] mt-0.5">{c.label}</p>
@@ -758,20 +804,88 @@ async function fetchDefinition(word, apiKey, model) {
 }
 
 const PDF_MAX_PAGES = 250;
+const PDF_VISION_MAX_PAGES = 20;
 
 async function extractPdfText(file, onProgress) {
   const buf = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
   const pageCount = Math.min(pdf.numPages, PDF_MAX_PAGES);
   let full = "";
+  let textPages = 0;
   for (let i = 1; i <= pageCount; i++) {
     onProgress && onProgress(i, pageCount);
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
-    full += content.items.map((it) => it.str).join(" ") + "\n";
+    const pageText = content.items.map((it) => it.str).join(" ");
+    if (pageText.trim().length > 20) textPages++;
+    full += pageText + "\n";
     page.cleanup && page.cleanup();
   }
-  return { text: full, truncated: pdf.numPages > PDF_MAX_PAGES, totalPages: pdf.numPages };
+  const looksScanned = pageCount > 0 && textPages / pageCount < 0.4;
+  return { text: full, truncated: pdf.numPages > PDF_MAX_PAGES, totalPages: pdf.numPages, pageCount, looksScanned };
+}
+
+async function renderPdfPagesToImages(file, pageCount, onProgress) {
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const n = Math.min(pdf.numPages, pageCount, PDF_VISION_MAX_PAGES);
+  const images = [];
+  for (let i = 1; i <= n; i++) {
+    onProgress && onProgress(i, n);
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: 1.6 });
+    const canvas = document.createElement("canvas");
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext("2d");
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    const dataUrl = canvas.toDataURL("image/png");
+    images.push(dataUrl.split(",")[1]);
+    page.cleanup && page.cleanup();
+  }
+  return { images, truncatedPages: pdf.numPages > n };
+}
+
+async function extractWordsFromImages(images, apiKey, model, onProgress) {
+  const system = `You are looking at scanned or photographed pages from a vocabulary word list. Read all visible text in the image(s) and identify the actual vocabulary words being taught, along with their definitions where clearly visible. Ignore headers, page numbers, decorative elements, and instructions. Return ONLY valid JSON (no markdown, no preamble): an array of objects like [{"word": string, "def": string}]. "def" should be empty string if no definition is visible for that word. Do not invent definitions.`;
+  const BATCH = 4;
+  let all = [];
+  let failedBatches = 0;
+  const batches = [];
+  for (let i = 0; i < images.length; i += BATCH) batches.push(images.slice(i, i + BATCH));
+  for (let b = 0; b < batches.length; b++) {
+    onProgress && onProgress(b + 1, batches.length);
+    try {
+      const content = [
+        { type: "text", text: "Extract the vocabulary words and definitions visible in these page images." },
+        ...batches[b].map((img) => ({ type: "image", source: { type: "base64", media_type: "image/png", data: img } })),
+      ];
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+        body: JSON.stringify({ model, max_tokens: 4000, system, messages: [{ role: "user", content }] }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e?.error?.message || `Request failed (${res.status})`);
+      }
+      const data = await res.json();
+      const raw = data.content.map((b2) => (b2.type === "text" ? b2.text : "")).join("").trim();
+      const parsed = extractJsonArray(raw);
+      if (Array.isArray(parsed)) all = all.concat(parsed);
+    } catch (err) {
+      failedBatches++;
+    }
+  }
+  const seen = new Set();
+  const deduped = [];
+  for (const w of all) {
+    const key = (w?.word || "").trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    deduped.push({ word: w.word.trim(), def: (w.def || "").trim() });
+  }
+  return { words: deduped, failedBatches, totalBatches: batches.length };
 }
 
 function extractJsonArray(raw) {
@@ -923,16 +1037,54 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
 
   const runAiExtract = () => runAiExtractOn(importText);
 
+  const runAiExtractFromImages = async (images) => {
+    if (!apiKey || !images.length) return false;
+    setAiParsing(true); setAiError(null); setAiNotice(null); setAiProgress(null);
+    try {
+      const { words: found, failedBatches, totalBatches } = await extractWordsFromImages(
+        images, apiKey, model, (current, total) => setAiProgress({ current, total })
+      );
+      if (!found.length) {
+        setAiError("Claude couldn't make out any vocabulary words in those page images — try a clearer scan or paste the words manually.");
+        return false;
+      }
+      const words = found.map((w) => freshWord({ word: w.word, def: w.def, vibe: "formal", coll: "" }));
+      setPreview(words);
+      setPlanDraft(suggestPlan(words.length));
+      if (failedBatches) {
+        setAiNotice(`Found ${found.length} words, but ${failedBatches} of ${totalBatches} page batch${totalBatches === 1 ? "" : "es"} couldn't be read — review the list below before creating it.`);
+      }
+      return true;
+    } catch (err) {
+      setAiError(err.message || "AI image scan failed.");
+      return false;
+    } finally {
+      setAiParsing(false); setAiProgress(null);
+    }
+  };
+
   const handlePdfUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setPdfLoading(true); setPdfError(null);
     try {
-      const { text, truncated, totalPages } = await extractPdfText(file, (current, total) => setPdfProgress({ current, total }));
-      if (!text.trim()) {
-        setPdfError("This PDF doesn't seem to contain selectable text (it may be a scanned image) — try a different file or paste the words manually.");
+      const { text, truncated, totalPages, pageCount, looksScanned } = await extractPdfText(file, (current, total) => setPdfProgress({ current, total }));
+
+      if (!text.trim() || looksScanned) {
+        if (!apiKey) {
+          setPdfError(!text.trim()
+            ? "This PDF doesn't contain selectable text — it looks like a scanned or photographed document. Add an API key in Settings so Claude can read the page images directly."
+            : "Most of this PDF's pages don't have selectable text — it looks partly scanned. Add an API key in Settings so Claude can read the page images directly.");
+          setPdfLoading(false);
+          return;
+        }
+        setPdfLoading(false);
+        const { images, truncatedPages } = await renderPdfPagesToImages(file, pageCount, (current, total) => setPdfProgress({ current, total }));
+        if (truncatedPages) setAiNotice(`This scanned PDF has more pages than we can process visually — only the first ${images.length} were scanned.`);
+        await runAiExtractFromImages(images);
         return;
       }
+
       setImportText((t) => (t ? t + "\n" : "") + text);
       if (truncated) setPdfError(`This PDF has ${totalPages} pages — only the first ${PDF_MAX_PAGES} were read to keep things fast. Add the rest manually if you need it.`);
       setPdfLoading(false);
@@ -1076,7 +1228,7 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
               {aiNotice && <p className="text-[11px] text-amber-700 dark:text-amber-300">{aiNotice}</p>}
               <p className="text-[11px] text-[color:var(--text-faint)]">
                 "Parse words" is a quick local split by line. If your text has definitions, example sentences, or other clutter mixed in (common with PDFs), use <span className="font-medium">Analyze with Claude</span> instead — it reads the whole thing and pulls out just the real vocabulary words and their definitions{!apiKey ? " (needs an API key in Settings)" : ""}.
-                {apiKey ? " PDFs are scanned by Claude automatically after upload." : " Add an API key in Settings and PDFs will be scanned automatically after upload."}
+                {apiKey ? " PDFs are scanned by Claude automatically after upload — even scanned/photographed pages with no selectable text, since Claude reads the page images directly." : " Add an API key in Settings and PDFs will be scanned automatically after upload, including scanned/photographed pages with no selectable text."}
               </p>
             </>
           ) : (
@@ -1341,10 +1493,10 @@ function Deck({ list, lists, activeListId, setActiveListId, updateList, onOpen, 
         </div>
       )}
 
-      <div className="space-y-2">
+      <div className="space-y-2 stagger">
         {list.words.map((w) => (
           <div key={w.id} onClick={() => onOpen(w)}
-            className="group flex items-center gap-4 rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] px-5 py-4 hover:ring-emerald-500/40 cursor-pointer transition">
+            className="group flex items-center gap-4 rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] px-5 py-4 hover:ring-emerald-500/40 hover:-translate-y-0.5 cursor-pointer transition-all duration-200">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2.5 mb-1">
                 <span className="text-base font-semibold text-[color:var(--text)]">{w.word}</span>
@@ -1590,8 +1742,9 @@ function MemorizeSession({ list, pool, updateList, setStats, registerActivity, o
 
   if (subPhase === "summary") {
     return (
-      <div className="max-w-2xl mx-auto px-8 py-10">
-        <Trophy size={32} className="text-amber-500 dark:text-amber-300 mb-4" />
+      <div className="max-w-2xl mx-auto px-8 py-10 relative animate-fade-up">
+        <Confetti />
+        <Trophy size={32} className="text-amber-500 dark:text-amber-300 mb-4 animate-pop" />
         <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)] mb-1">学 · Fully memorized</p>
         <h2 className="text-2xl font-semibold text-[color:var(--text)] mb-2">All {pool.length} word{pool.length === 1 ? "" : "s"} reached 100%</h2>
         <p className="text-sm text-[color:var(--text-dim)] mb-6">Tap any word for its full page — definition, examples, and collocations.</p>
@@ -1890,8 +2043,9 @@ function LearnView({ list, updateList, setStats, registerActivity, onOpenDetail,
 
   // phase === "summary"
   return (
-    <div className="max-w-2xl mx-auto px-8 py-10">
-      <Trophy size={32} className="text-amber-500 dark:text-amber-300 mb-4" />
+    <div className="max-w-2xl mx-auto px-8 py-10 relative animate-fade-up">
+      <Confetti />
+      <Trophy size={32} className="text-amber-500 dark:text-amber-300 mb-4 animate-pop" />
       <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)] mb-1">学 · Nice work</p>
       <h2 className="text-2xl font-semibold text-[color:var(--text)] mb-2">You learned {sessionPool.length} new word{sessionPool.length === 1 ? "" : "s"} today</h2>
       <p className="text-sm text-[color:var(--text-dim)] mb-6">Tap any word for its full page — definition, examples, and collocations.</p>
@@ -1933,10 +2087,12 @@ function shuffle(arr) {
   return a;
 }
 
-function buildQuestion(word, allWords) {
+function buildQuestion(word, allWords, enabledTypes) {
   const others = allWords.filter((w) => w.word.toLowerCase() !== word.word.toLowerCase() && w.def);
   const canMcq = others.length >= 3;
-  const types = canMcq ? ["word2def", "def2word", "fill"] : ["fill"];
+  const allowed = (enabledTypes && enabledTypes.length ? enabledTypes : ["word2def", "def2word", "fill"])
+    .filter((t) => canMcq || t === "fill");
+  const types = allowed.length ? allowed : ["fill"];
   const type = types[Math.floor(Math.random() * types.length)];
 
   if (type === "word2def") {
@@ -1952,9 +2108,12 @@ function buildQuestion(word, allWords) {
   return { type, word, sentence, def: word.def, answer: word.word };
 }
 
-function QuizView({ list, allWords, updateList, setStats, registerActivity }) {
+function QuizView({ list, allWords, updateList, setStats, registerActivity, onOpenDetail, setView }) {
   const [phase, setPhase] = useState("home");
+  const [mode, setMode] = useState(() => load(LS.quizMode, "adaptive"));
+  const [enabledStyles, setEnabledStyles] = useState(() => load(LS.quizStyles, QUIZ_STYLES.map((s) => s.id)));
   const [pool, setPool] = useState([]);
+  const [memPool, setMemPool] = useState([]);
   const [sessionState, setSessionState] = useState({});
   const [current, setCurrent] = useState(null);
   const [question, setQuestion] = useState(null);
@@ -1962,7 +2121,21 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity }) {
   const [textAnswer, setTextAnswer] = useState("");
   const [feedback, setFeedback] = useState(null);
 
+  useEffect(() => save(LS.quizMode, mode), [mode]);
+  useEffect(() => save(LS.quizStyles, enabledStyles), [enabledStyles]);
+
   const todayPool = useMemo(() => getTodayPool(list), [list]);
+  const reviewMemPool = useMemo(() => getReviewMemorizePool(list), [list]);
+
+  const toggleStyle = (id) => {
+    setEnabledStyles((cur) => {
+      if (cur.includes(id)) {
+        if (cur.length === 1) return cur;
+        return cur.filter((s) => s !== id);
+      }
+      return [...cur, id];
+    });
+  };
 
   const pickNext = (poolArr, state, avoidId) => {
     const remaining = poolArr.filter((w) => !state[w.id]?.done);
@@ -1980,6 +2153,12 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity }) {
   };
 
   const start = () => {
+    if (mode === "deep") {
+      if (!reviewMemPool.length) return;
+      setMemPool(reviewMemPool);
+      setPhase("deep");
+      return;
+    }
     if (!todayPool.length) return;
     const initState = {};
     todayPool.forEach((w) => { initState[w.id] = { wrong: 0, done: false }; });
@@ -1987,7 +2166,7 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity }) {
     setPool(todayPool);
     const first = pickNext(todayPool, initState, null);
     setCurrent(first);
-    setQuestion(buildQuestion(first, allWords));
+    setQuestion(buildQuestion(first, allWords, enabledStyles));
     setChosen(null); setTextAnswer(""); setFeedback(null);
     setPhase("quiz");
   };
@@ -2011,7 +2190,7 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity }) {
         setPhase("recap");
       } else {
         setCurrent(nextWord);
-        setQuestion(buildQuestion(nextWord, allWords));
+        setQuestion(buildQuestion(nextWord, allWords, enabledStyles));
       }
       return s;
     });
@@ -2038,20 +2217,67 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity }) {
     setPhase("done");
   };
 
-  if (phase === "home") {
+  if (phase === "deep") {
     return (
-      <div className="max-w-2xl mx-auto px-8 py-16 text-center">
+      <MemorizeSession list={list} pool={memPool} updateList={updateList} setStats={setStats}
+        registerActivity={registerActivity} onOpenDetail={onOpenDetail} setView={setView}
+        onExit={() => setPhase("home")} />
+    );
+  }
+
+  if (phase === "home") {
+    const activePending = mode === "deep" ? reviewMemPool : todayPool;
+    return (
+      <div className="max-w-2xl mx-auto px-8 py-16 text-center animate-fade-up">
         <Zap size={36} className="mx-auto text-[color:var(--accent-text)] mb-4" />
         <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)] mb-1">测 · Quick Test</p>
-        <h2 className="text-2xl font-semibold text-[color:var(--text)] mb-3">Ready to test today's words?</h2>
+        <h2 className="text-2xl font-semibold text-[color:var(--text)] mb-3">Ready to review today's words?</h2>
+
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          {QUIZ_MODES.map((m) => (
+            <button key={m.id} onClick={() => setMode(m.id)}
+              className={`text-left rounded-xl ring-1 p-4 transition ${
+                mode === m.id ? "bg-emerald-500/10 ring-emerald-500/40" : "bg-[color:var(--surface)] ring-[color:var(--border)] hover:ring-emerald-500/20"}`}>
+              <p className={`text-sm font-semibold ${mode === m.id ? "text-[color:var(--accent-text)]" : "text-[color:var(--text)]"}`}>{m.label}</p>
+              <p className="text-xs text-[color:var(--text-faint)] mt-1">{m.desc}</p>
+            </button>
+          ))}
+        </div>
+
         <p className="text-sm text-[color:var(--text-dim)] mb-8">
-          {todayPool.length
-            ? `${todayPool.length} word${todayPool.length === 1 ? "" : "s"} queued from "${list.name}". Words you miss will come back around more often.`
-            : "No words are due right now — add words to this list or check back tomorrow."}
+          {activePending.length
+            ? `${activePending.length} word${activePending.length === 1 ? "" : "s"} queued from "${list.name}". ${mode === "deep" ? "You'll self-rate each one until it's back to 100%." : "Words you miss will come back around more often."}`
+            : "Nothing queued right now — add words to this list or check back tomorrow."}
         </p>
-        <button onClick={start} disabled={!todayPool.length}
-          className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-[#0a0e14] font-semibold hover:from-emerald-400 hover:to-teal-400 disabled:opacity-40 transition">
-          <Sparkles size={16} /> Start quick test
+
+        {mode === "adaptive" && (
+          <div className="text-left rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-5 mb-8">
+            <p className="text-xs uppercase tracking-wide text-[color:var(--text-faint)] mb-3">Review styles</p>
+            <div className="space-y-2">
+              {QUIZ_STYLES.map((s) => {
+                const on = enabledStyles.includes(s.id);
+                return (
+                  <button key={s.id} onClick={() => toggleStyle(s.id)}
+                    className={`w-full flex items-start gap-3 px-3 py-2.5 rounded-lg ring-1 text-left transition ${
+                      on ? "bg-emerald-500/10 ring-emerald-500/40" : "ring-[color:var(--border)] hover:ring-emerald-500/20"}`}>
+                    <div className={`mt-0.5 h-4 w-4 rounded flex items-center justify-center shrink-0 transition ${
+                      on ? "bg-emerald-500" : "ring-1 ring-[color:var(--text-faint)]"}`}>
+                      {on && <Check size={12} className="text-[#0a0e14]" strokeWidth={3} />}
+                    </div>
+                    <div>
+                      <p className={`text-sm font-medium ${on ? "text-[color:var(--accent-text)]" : "text-[color:var(--text)]"}`}>{s.label}</p>
+                      <p className="text-xs text-[color:var(--text-faint)] mt-0.5">{s.desc}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <button onClick={start} disabled={!activePending.length}
+          className="btn-pulse inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-[#0a0e14] font-semibold hover:from-emerald-400 hover:to-teal-400 disabled:opacity-40 disabled:animate-none transition">
+          <Sparkles size={16} /> {mode === "deep" ? "Start deep review" : "Start quick test"}
         </button>
       </div>
     );
@@ -2069,7 +2295,7 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity }) {
           <div className="h-full bg-emerald-500 transition-all" style={{ width: `${(doneCount / pool.length) * 100}%` }} />
         </div>
 
-        <div className="rounded-2xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-8">
+        <div key={current.id + question.type} className="rounded-2xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-8 animate-fade-up">
           <span className="text-2xl">{VIBE_EMOJI[current.vibe] || "✨"}</span>
 
           {question.type === "word2def" && (
@@ -2079,7 +2305,7 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity }) {
               <div className="space-y-2">
                 {question.choices.map((c, i) => (
                   <ChoiceButton key={i} label={c} selected={chosen === c} feedback={feedback} isAnswer={c === question.answer}
-                    onClick={() => { setChosen(c); submit(c); }} />
+                    onClick={() => !feedback && setChosen(c)} />
                 ))}
               </div>
             </>
@@ -2092,10 +2318,17 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity }) {
               <div className="space-y-2">
                 {question.choices.map((c, i) => (
                   <ChoiceButton key={i} label={c} selected={chosen === c} feedback={feedback} isAnswer={c === question.answer}
-                    onClick={() => { setChosen(c); submit(c); }} />
+                    onClick={() => !feedback && setChosen(c)} />
                 ))}
               </div>
             </>
+          )}
+
+          {(question.type === "word2def" || question.type === "def2word") && !feedback && (
+            <button onClick={() => submit(chosen)} disabled={chosen === null}
+              className="mt-4 w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 disabled:opacity-40 transition">
+              <Check size={15} /> Submit answer
+            </button>
           )}
 
           {question.type === "fill" && (
@@ -2104,13 +2337,13 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity }) {
               <p className="text-lg text-[color:var(--text)] mb-2 leading-relaxed">{question.sentence}</p>
               <p className="text-xs text-[color:var(--text-faint)] mb-4">Hint: {question.def}</p>
               <input value={textAnswer} onChange={(e) => setTextAnswer(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && submit(textAnswer)}
+                onKeyDown={(e) => e.key === "Enter" && textAnswer.trim() && submit(textAnswer)}
                 disabled={!!feedback} placeholder="Type the word…"
                 className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
               {!feedback && (
                 <button onClick={() => submit(textAnswer)} disabled={!textAnswer.trim()}
                   className="mt-3 px-4 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400 disabled:opacity-40 transition">
-                  Check
+                  Submit answer
                 </button>
               )}
               {feedback && (
@@ -2133,7 +2366,7 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity }) {
 
   if (phase === "recap") {
     return (
-      <div className="max-w-2xl mx-auto px-8 py-10">
+      <div className="max-w-2xl mx-auto px-8 py-10 animate-fade-up">
         <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)] mb-1">测 · Recap</p>
         <h2 className="text-2xl font-semibold text-[color:var(--text)] mb-2">Nice work — here's everything you covered</h2>
         <p className="text-sm text-[color:var(--text-dim)] mb-6">Take one more look at the definitions before you save this round.</p>
@@ -2164,8 +2397,9 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity }) {
 
   if (phase === "done") {
     return (
-      <div className="max-w-md mx-auto px-8 py-24 text-center">
-        <Trophy size={40} className="mx-auto text-amber-500 dark:text-amber-300 mb-4" />
+      <div className="max-w-md mx-auto px-8 py-24 text-center relative animate-fade-up">
+        <Confetti />
+        <Trophy size={40} className="mx-auto text-amber-500 dark:text-amber-300 mb-4 animate-pop" />
         <h2 className="text-2xl font-semibold text-[color:var(--text)] mb-2">Session saved!</h2>
         <p className="text-sm text-[color:var(--text-dim)] mb-8">Your progress on these words has been updated. Come back tomorrow for the next round.</p>
         <button onClick={() => setPhase("home")}
@@ -2185,10 +2419,12 @@ function ChoiceButton({ label, selected, feedback, isAnswer, onClick }) {
     if (isAnswer) style = "ring-emerald-500/50 bg-emerald-500/15 text-[color:var(--accent-text)]";
     else if (selected) style = "ring-rose-500/50 bg-rose-500/15 text-rose-700 dark:text-rose-300";
     else style = "ring-[color:var(--border)] text-[color:var(--text-faint)] opacity-60";
+  } else if (selected) {
+    style = "ring-emerald-500/50 bg-emerald-500/10 text-[color:var(--text)]";
   }
   return (
     <button onClick={onClick} disabled={!!feedback}
-      className={`w-full text-left px-4 py-3 rounded-lg ring-1 text-sm transition ${style}`}>
+      className={`w-full text-left px-4 py-3 rounded-lg ring-1 text-sm transition-all duration-150 ${style}`}>
       {label}
     </button>
   );
@@ -2371,6 +2607,28 @@ function FeedbackBlock({ title, items, labelKey, vColor }) {
 }
 
 /* ---------------- Key Modal ---------------- */
+function Confetti() {
+  const colors = ["#34d399", "#38bdf8", "#f472b6", "#fbbf24", "#a78bfa"];
+  const pieces = useMemo(() => Array.from({ length: 24 }, (_, i) => ({
+    left: Math.random() * 100,
+    delay: Math.random() * 0.3,
+    duration: 0.9 + Math.random() * 0.6,
+    color: colors[i % colors.length],
+    rotate: Math.random() * 180,
+  })), []);
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-0 h-0 overflow-visible z-10">
+      {pieces.map((p, i) => (
+        <span key={i} className="confetti-piece" style={{
+          left: `${p.left}%`, background: p.color,
+          animationDelay: `${p.delay}s`, animationDuration: `${p.duration}s`,
+          transform: `rotate(${p.rotate}deg)`,
+        }} />
+      ))}
+    </div>
+  );
+}
+
 function KeyModal({ onClose, onGo }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-6" onClick={onClose}>
