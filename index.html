@@ -93,6 +93,8 @@ const ChevronRight = (p) => <Icon {...p} path='<polyline points="9 18 15 12 9 6"
 const ChevronLeft = (p) => <Icon {...p} path='<polyline points="15 18 9 12 15 6"/>' />;
 const Menu = (p) => <Icon {...p} path='<line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/>' />;
 const Expand = (p) => <Icon {...p} path='<path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/>' />;
+const Eye = (p) => <Icon {...p} path='<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/>' />;
+const EyeOff = (p) => <Icon {...p} path='<path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-3.16 4.34M6.6 6.6C3.9 8.3 2 12 2 12s4 8 11 8a10.9 10.9 0 0 0 5-1.2M9.9 9.9a3 3 0 1 0 4.2 4.2"/><line x1="1" y1="1" x2="23" y2="23"/>' />;
 const Quote = (p) => <Icon {...p} path='<path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 0-1 0"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 0-1 0"/>' />;
 const Settings = (p) => <Icon {...p} path='<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>' />;
 const Sun = (p) => <Icon {...p} path='<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>' />;
@@ -106,14 +108,39 @@ const GraduationCap = (p) => <Icon {...p} path='<path d="M22 10 12 5 2 10l10 5 1
 const FileText = (p) => <Icon {...p} path='<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/>' />;
 const BrandMark = (p) => <Icon {...p} path='<path d="M6.5 5.2 4 2M17.5 5.2 20 2"/><path d="M12 4c-3.6 0-6.3 2.6-6.3 6.2v3c0 3 2.4 5.4 5.4 5.4h1.8c3 0 5.4-2.4 5.4-5.4v-3C18.3 6.6 15.6 4 12 4Z"/><circle cx="9.3" cy="10.6" r="1.5" fill="currentColor" stroke="none"/><circle cx="14.7" cy="10.6" r="1.5" fill="currentColor" stroke="none"/><path d="M11 13.6h2l-1 2-1-2Z" fill="currentColor" stroke="none"/>' />;
 
-/* ---------------- Storage ---------------- */
+/* ---------------- Storage ----------------
+   Personal app data (API key, word lists, stats, etc.) is namespaced per local
+   account via nsKey() below, so switching/creating local profiles gives each
+   one its own isolated bucket instead of sharing one global blob. Theme and
+   login/account bookkeeping stay global (device-level, not per-profile). */
 const LS = {
-  key: "vcw_apiKey", model: "vcw_model", theme: "vcw_theme",
-  lists: "vcw_lists", activeList: "vcw_activeList",
-  stats: "vcw_stats", streak: "vcw_streak", learnStyles: "vcw_learnStyles", learnMode: "vcw_learnMode",
-  account: "vcw_account", loggedIn: "vcw_loggedIn",
-  quizStyles: "vcw_quizStyles", quizMode: "vcw_quizMode",
+  theme: "vcw_theme",
+  accounts: "vcw_accounts", currentEmail: "vcw_currentEmail", loggedIn: "vcw_loggedIn",
 };
+let CURRENT_EMAIL = null;
+const nsKey = (base) => CURRENT_EMAIL ? `vcw_acct_${CURRENT_EMAIL}_${base}` : `vcw_${base}`;
+
+function migrateLegacyAuth() {
+  if (localStorage.getItem("vcw_migrated_v2")) return;
+  try {
+    const oldAccountRaw = localStorage.getItem("vcw_account");
+    if (oldAccountRaw) {
+      const oldAccount = JSON.parse(oldAccountRaw);
+      if (oldAccount && oldAccount.email) {
+        const accounts = JSON.parse(localStorage.getItem("vcw_accounts") || "[]");
+        if (!accounts.some((a) => a.email === oldAccount.email)) accounts.push(oldAccount);
+        localStorage.setItem("vcw_accounts", JSON.stringify(accounts));
+        localStorage.setItem("vcw_currentEmail", JSON.stringify(oldAccount.email));
+        ["apiKey", "model", "lists", "activeList", "stats", "streak", "learnStyles", "learnMode", "quizStyles", "quizMode"].forEach((base) => {
+          const oldFlat = localStorage.getItem(`vcw_${base}`);
+          if (oldFlat != null) localStorage.setItem(`vcw_acct_${oldAccount.email}_${base}`, oldFlat);
+        });
+      }
+    }
+  } catch { /* best-effort migration — leave data as-is on failure */ }
+  localStorage.setItem("vcw_migrated_v2", "1");
+}
+migrateLegacyAuth();
 const LEARN_STYLES = [
   { id: "reveal", label: "Recall first", desc: "See the word, try to recall its meaning, then reveal." },
   { id: "context", label: "Context clues", desc: "Guess the word from a sentence with a blank." },
@@ -292,8 +319,8 @@ function getReviewMemorizePool(list) {
 
 /* ---------------- Auth gate ---------------- */
 function AuthGate({ onAuth }) {
-  const [account] = useState(() => load(LS.account, null));
-  const [mode, setMode] = useState(account ? "login" : "register");
+  const [accounts] = useState(() => load(LS.accounts, []));
+  const [mode, setMode] = useState(accounts.length ? "login" : "register");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -302,19 +329,27 @@ function AuthGate({ onAuth }) {
   const submit = (e) => {
     e.preventDefault();
     setError(null);
+    const normEmail = email.trim().toLowerCase();
     if (mode === "register") {
-      if (!name.trim() || !email.trim() || !password) { setError("Fill in every field to create your account."); return; }
-      const acc = { name: name.trim(), email: email.trim().toLowerCase(), password };
-      save(LS.account, acc);
+      if (!name.trim() || !normEmail || !password) { setError("Fill in every field to create your account."); return; }
+      if (accounts.some((a) => a.email === normEmail)) {
+        setError("An account with that email already exists on this device — log in instead.");
+        setMode("login");
+        return;
+      }
+      const acc = { name: name.trim(), email: normEmail, password };
+      save(LS.accounts, [...accounts, acc]);
+      save(LS.currentEmail, normEmail);
       save(LS.loggedIn, true);
       onAuth();
       return;
     }
-    if (!account) { setError("No account on this device yet — create one first."); setMode("register"); return; }
-    if (email.trim().toLowerCase() !== account.email || password !== account.password) {
-      setError("Incorrect email or password.");
+    const acc = accounts.find((a) => a.email === normEmail);
+    if (!acc || acc.password !== password) {
+      setError(accounts.length ? "Incorrect email or password." : "No account on this device yet — create one first.");
       return;
     }
+    save(LS.currentEmail, acc.email);
     save(LS.loggedIn, true);
     onAuth();
   };
@@ -369,7 +404,7 @@ function AuthGate({ onAuth }) {
           </form>
         </div>
         <p className="text-[11px] text-[color:var(--text-faint)] text-center mt-4 leading-relaxed">
-          This is a local profile only — stored in this browser, not on a server. There's no real account security here, just a personal space for your progress.
+          This is a local profile only — stored in this browser, not on a server, with no email verification. Each account on this device gets its own separate word lists, progress, and API key. Passwords aren't encrypted, so don't reuse a real one.
         </p>
       </div>
     </div>
@@ -379,26 +414,26 @@ function AuthGate({ onAuth }) {
 /* ---------------- App ---------------- */
 function App({ onLogout }) {
   const [view, setView] = useState("dashboard");
-  const [apiKey, setApiKey] = useState(() => load(LS.key, ""));
-  const [model, setModel] = useState(() => load(LS.model, MODELS[0].id));
+  const [apiKey, setApiKey] = useState(() => load(nsKey("apiKey"), ""));
+  const [model, setModel] = useState(() => load(nsKey("model"), MODELS[0].id));
   const [theme, setTheme] = useState(() => load(LS.theme, "dark"));
-  const [lists, setLists] = useState(() => repairListIds(load(LS.lists, [
+  const [lists, setLists] = useState(() => repairListIds(load(nsKey("lists"), [
     { id: "default", name: "My Words", source: "custom", plan: null, createdAt: Date.now(), words: SEED_WORDS },
   ])));
-  const [activeListId, setActiveListId] = useState(() => load(LS.activeList, "default"));
-  const [stats, setStats] = useState(() => load(LS.stats, { sessions: 0, dailyLearned: {} }));
-  const [streak, setStreak] = useState(() => load(LS.streak, { count: 0, last: null }));
+  const [activeListId, setActiveListId] = useState(() => load(nsKey("activeList"), "default"));
+  const [stats, setStats] = useState(() => load(nsKey("stats"), { sessions: 0, dailyLearned: {} }));
+  const [streak, setStreak] = useState(() => load(nsKey("streak"), { count: 0, last: null }));
   const [detailWord, setDetailWord] = useState(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [showKeyModal, setShowKeyModal] = useState(false);
 
-  useEffect(() => save(LS.key, apiKey), [apiKey]);
-  useEffect(() => save(LS.model, model), [model]);
+  useEffect(() => save(nsKey("apiKey"), apiKey), [apiKey]);
+  useEffect(() => save(nsKey("model"), model), [model]);
   useEffect(() => save(LS.theme, theme), [theme]);
-  useEffect(() => save(LS.lists, lists), [lists]);
-  useEffect(() => save(LS.activeList, activeListId), [activeListId]);
-  useEffect(() => save(LS.stats, stats), [stats]);
-  useEffect(() => save(LS.streak, streak), [streak]);
+  useEffect(() => save(nsKey("lists"), lists), [lists]);
+  useEffect(() => save(nsKey("activeList"), activeListId), [activeListId]);
+  useEffect(() => save(nsKey("stats"), stats), [stats]);
+  useEffect(() => save(nsKey("streak"), streak), [streak]);
 
   useEffect(() => {
     const apply = () => {
@@ -747,8 +782,10 @@ function Dashboard({ apiKey, masteredCount, totalIntroduced, todayLearned, stats
 /* ---------------- Settings ---------------- */
 function SettingsView({ apiKey, setApiKey, model, setModel, theme, setTheme, onLogout }) {
   const [draft, setDraft] = useState(apiKey);
+  const [showKey, setShowKey] = useState(false);
   const dirty = draft !== apiKey;
-  const account = load(LS.account, null);
+  const accounts = load(LS.accounts, []);
+  const account = accounts.find((a) => a.email === CURRENT_EMAIL) || null;
   const themes = [
     { id: "light", label: "Light", icon: Sun },
     { id: "dark", label: "Dark", icon: Moon },
@@ -768,15 +805,23 @@ function SettingsView({ apiKey, setApiKey, model, setModel, theme, setTheme, onL
         </h3>
         <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Anthropic API key</label>
         <div className="flex gap-2 mb-5">
-          <input type="password" value={draft} onChange={(e) => setDraft(e.target.value)}
-            placeholder="sk-ant-..." autoComplete="off"
-            className="flex-1 bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50 font-mono" />
+          <div className="relative flex-1">
+            <input type="text" value={draft} onChange={(e) => setDraft(e.target.value)}
+              placeholder="sk-ant-..." autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+              data-lpignore="true" data-1p-ignore="true" data-bwignore="true" name="vcw-secret-not-a-password"
+              style={showKey ? undefined : { WebkitTextSecurity: "disc" }}
+              className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg pl-3 pr-10 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50 font-mono" />
+            <button type="button" onClick={() => setShowKey((s) => !s)} tabIndex={-1}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[color:var(--text-faint)] hover:text-[color:var(--text)]">
+              {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
           <button onClick={() => setApiKey(draft)} disabled={!dirty}
             className="px-4 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400 disabled:opacity-30 disabled:cursor-not-allowed transition">
             Save
           </button>
         </div>
-        <p className="text-[11px] text-[color:var(--text-faint)] mb-5 -mt-3">Stored only in this browser's localStorage. Never sent anywhere except Anthropic.</p>
+        <p className="text-[11px] text-[color:var(--text-faint)] mb-5 -mt-3">Stored only in this browser's localStorage for this account. Never sent anywhere except Anthropic — and never saved to your browser's password manager.</p>
 
         <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Claude model</label>
         <select value={model} onChange={(e) => setModel(e.target.value)}
@@ -1955,15 +2000,15 @@ const LEARN_MODES = [
 
 function LearnView({ list, updateList, setStats, registerActivity, onOpenDetail, setView }) {
   const [phase, setPhase] = useState("home");
-  const [mode, setMode] = useState(() => load(LS.learnMode, "quick"));
+  const [mode, setMode] = useState(() => load(nsKey("learnMode"), "quick"));
   const [sessionPool, setSessionPool] = useState([]);
   const [memPool, setMemPool] = useState([]);
   const [idx, setIdx] = useState(0);
   const [revealed, setRevealed] = useState(false);
-  const [enabledStyles, setEnabledStyles] = useState(() => load(LS.learnStyles, LEARN_STYLES.map((s) => s.id)));
+  const [enabledStyles, setEnabledStyles] = useState(() => load(nsKey("learnStyles"), LEARN_STYLES.map((s) => s.id)));
 
-  useEffect(() => save(LS.learnStyles, enabledStyles), [enabledStyles]);
-  useEffect(() => save(LS.learnMode, mode), [mode]);
+  useEffect(() => save(nsKey("learnStyles"), enabledStyles), [enabledStyles]);
+  useEffect(() => save(nsKey("learnMode"), mode), [mode]);
 
   const pending = useMemo(() => getLearnPool(list), [list]);
   const memPending = useMemo(() => getMemorizePool(list), [list]);
@@ -2200,8 +2245,8 @@ function buildQuestion(word, allWords, enabledTypes) {
 
 function QuizView({ list, allWords, updateList, setStats, registerActivity, onOpenDetail, setView }) {
   const [phase, setPhase] = useState("home");
-  const [mode, setMode] = useState(() => load(LS.quizMode, "adaptive"));
-  const [enabledStyles, setEnabledStyles] = useState(() => load(LS.quizStyles, QUIZ_STYLES.map((s) => s.id)));
+  const [mode, setMode] = useState(() => load(nsKey("quizMode"), "adaptive"));
+  const [enabledStyles, setEnabledStyles] = useState(() => load(nsKey("quizStyles"), QUIZ_STYLES.map((s) => s.id)));
   const [pool, setPool] = useState([]);
   const [memPool, setMemPool] = useState([]);
   const [sessionState, setSessionState] = useState({});
@@ -2211,8 +2256,8 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity, onOp
   const [textAnswer, setTextAnswer] = useState("");
   const [feedback, setFeedback] = useState(null);
 
-  useEffect(() => save(LS.quizMode, mode), [mode]);
-  useEffect(() => save(LS.quizStyles, enabledStyles), [enabledStyles]);
+  useEffect(() => save(nsKey("quizMode"), mode), [mode]);
+  useEffect(() => save(nsKey("quizStyles"), enabledStyles), [enabledStyles]);
 
   const todayPool = useMemo(() => getTodayPool(list), [list]);
   const reviewMemPool = useMemo(() => getReviewMemorizePool(list), [list]);
@@ -2741,6 +2786,7 @@ function KeyModal({ onClose, onGo }) {
 
 function Root() {
   const [authed, setAuthed] = useState(() => load(LS.loggedIn, false));
+  CURRENT_EMAIL = load(LS.currentEmail, null);
 
   useEffect(() => {
     const theme = load(LS.theme, "dark");
@@ -2748,8 +2794,8 @@ function Root() {
     document.documentElement.setAttribute("data-theme", eff);
   }, []);
 
-  if (!authed) return <AuthGate onAuth={() => setAuthed(true)} />;
-  return <App onLogout={() => { save(LS.loggedIn, false); setAuthed(false); }} />;
+  if (!authed || !CURRENT_EMAIL) return <AuthGate onAuth={() => setAuthed(true)} />;
+  return <App key={CURRENT_EMAIL} onLogout={() => { save(LS.loggedIn, false); setAuthed(false); }} />;
 }
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
