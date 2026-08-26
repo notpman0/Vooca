@@ -148,6 +148,7 @@ const Plus = (p) => <Icon {...p} path='<line x1="12" y1="5" x2="12" y2="19"/><li
 const Flame = (p) => <Icon {...p} path='<path d="M8.5 14.5A2.5 2.5 0 0 0 11 17a2.5 2.5 0 0 0 2.5-2.5c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7.5 7.5 0 1 1-15 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5Z"/>' />;
 const BookOpen = (p) => <Icon {...p} path='<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2Z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7Z"/>' />;
 const Trophy = (p) => <Icon {...p} path='<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0Z"/><path d="M17 5h3a3 3 0 0 1-3 5M7 5H4a3 3 0 0 0 3 5"/>' />;
+const Swords = (p) => <Icon {...p} path='<polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" y1="19" x2="19" y2="13"/><line x1="16" y1="16" x2="20" y2="20"/><line x1="19" y1="21" x2="21" y2="19"/><polyline points="9.5 6.5 21 18 21 21 18 21 6.5 9.5"/><line x1="5" y1="14" x2="9" y2="18"/><line x1="4" y1="17" x2="7" y2="20"/><line x1="3" y1="19" x2="5" y2="21"/>' />;
 const Copy = (p) => <Icon {...p} path='<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>' />;
 const UserCircle = (p) => <Icon {...p} path='<circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M6.5 19a5.5 5.5 0 0 1 11 0"/>' />;
 const Globe = (p) => <Icon {...p} path='<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20Z"/>' />;
@@ -307,6 +308,72 @@ const VOCAB_TEST_TIERS = [
   ] },
 ];
 const VOCAB_TEST_FAKES = ["glimmerate", "trepidous", "fluxenary", "consolute", "brindlement", "vexolate", "quandric", "sombrature"];
+
+/* ---------------- Battle (1v1 vocabulary duel) ----------------
+ * Real matches sync over the worker via short-interval polling (see
+ * AUTH_BASE /battle/*) — no WebSockets/Durable Objects needed. Word content
+ * never crosses the wire: both clients derive the identical round list from
+ * {battleId, tier} through a seeded RNG, so only correct/ms answers sync. */
+const BATTLE_ROUNDS = 7;
+const BATTLE_ROUND_MS = 8000;
+const BATTLE_QUEUE_TIMEOUT_MS = 5000;
+const BATTLE_RANKS = [
+  { name: "Bronze", zh: "青铜", min: 0, grad: "from-amber-700 to-amber-900", text: "text-amber-500" },
+  { name: "Silver", zh: "白银", min: 1000, grad: "from-slate-300 to-slate-500", text: "text-slate-300" },
+  { name: "Gold", zh: "黄金", min: 1200, grad: "from-yellow-300 to-yellow-500", text: "text-yellow-400" },
+  { name: "Platinum", zh: "铂金", min: 1400, grad: "from-cyan-300 to-cyan-500", text: "text-cyan-300" },
+  { name: "Diamond", zh: "钻石", min: 1600, grad: "from-fuchsia-300 to-violet-500", text: "text-fuchsia-300" },
+];
+function rankForMmr(mmr) {
+  let r = BATTLE_RANKS[0];
+  for (const t of BATTLE_RANKS) if (mmr >= t.min) r = t;
+  return r;
+}
+function wordTierForRankName(name) {
+  return { Bronze: "A1", Silver: "B1", Gold: "B2", Platinum: "C1", Diamond: "C2" }[name] || "A1";
+}
+const BOT_PROFILE = {
+  Bronze: { acc: 0.55, minMs: 2200, maxMs: 4800 },
+  Silver: { acc: 0.65, minMs: 1800, maxMs: 4200 },
+  Gold: { acc: 0.75, minMs: 1500, maxMs: 3600 },
+  Platinum: { acc: 0.85, minMs: 1200, maxMs: 3000 },
+  Diamond: { acc: 0.93, minMs: 900, maxMs: 2400 },
+};
+
+// Deterministic PRNG (mulberry32-ish) seeded from a string, so two clients
+// given the same seed derive the exact same round order/distractors without
+// any word content passing through the server.
+function seededRng(seedStr) {
+  let h = 1779033703 ^ seedStr.length;
+  for (let i = 0; i < seedStr.length; i++) {
+    h = Math.imul(h ^ seedStr.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  return function () {
+    h = Math.imul(h ^ (h >>> 16), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  };
+}
+function shuffleSeeded(arr, rng) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function battleRoundsFor(seed, tierId, count) {
+  const tier = VOCAB_TEST_TIERS.find((t) => t.id === tierId) || VOCAB_TEST_TIERS[0];
+  const rng = seededRng(`${seed}:${tierId}`);
+  const picked = shuffleSeeded(tier.words, rng).slice(0, Math.min(count, tier.words.length));
+  return picked.map((word) => {
+    const distractors = shuffleSeeded(tier.words.filter((w) => w.w !== word.w), rng).slice(0, 3);
+    const choices = shuffleSeeded([word, ...distractors], rng).map((w) => w.en);
+    return { word: word.w, zh: word.zh, correct: word.en, choices };
+  });
+}
 
 // Curated topic word packs — original word selections, not copied from any
 // existing published list. Definitions/examples aren't pre-written here; they
@@ -1127,6 +1194,7 @@ function App({ onLogout }) {
     { id: "quiz", label: "Quick Test", sub: "测", icon: Zap },
     { id: "search", label: "Dictionary", sub: "查", icon: Search },
     { id: "sandbox", label: "Practice Sandbox", sub: "写", icon: PenLine },
+    { id: "battle", label: "Battle", sub: "对战", icon: Swords },
     { id: "leaderboard", label: "Leaderboard", sub: "排行榜", icon: Trophy },
     { id: "settings", label: "Settings", icon: Settings },
   ].map((n) => (uiLang === "en" ? { ...n, sub: undefined } : n));
@@ -1231,6 +1299,9 @@ function App({ onLogout }) {
             )}
             {view === "sandbox" && activeList && (
               <Sandbox {...{ words: activeList.words.filter((w) => w.learnedOn === todayStr()), apiKey, model, provider, setStats, registerActivity, promptKey: () => setShowKeyModal(true) }} />
+            )}
+            {view === "battle" && (
+              <BattleView uiLang={uiLang} />
             )}
             {view === "leaderboard" && (
               <LeaderboardView {...{ profile, setProfile, uiLang, setVocabTestResult, onCreateList: createPersonalizedList, leaderboardUserId, liveStats: { totalLearned: effectiveTotalLearned, totalMastered: effectiveTotalMastered, vocabSize: effectiveVocabSize, streak: effectiveStreak, points } }} />
@@ -2036,6 +2107,359 @@ function SettingsView({ apiKey, setApiKey, model, setModel, provider, setProvide
 }
 
 /* ---------------- Leaderboard ---------------- */
+function BattleHpBar({ label, hp, tint }) {
+  return (
+    <div className="flex-1 min-w-0">
+      <div className="flex justify-between text-xs mb-1">
+        <span className="font-medium text-[color:var(--text)] truncate">{label}</span>
+        <span className="text-[color:var(--text-faint)] tabular-nums">{Math.round(hp)}</span>
+      </div>
+      <div className="h-2.5 rounded-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] overflow-hidden">
+        <div className={`h-full rounded-full bg-gradient-to-r ${tint} transition-all duration-500 ease-out`} style={{ width: `${Math.max(0, Math.min(100, hp))}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function BattleView({ uiLang }) {
+  const isZh = uiLang === "zh";
+  const token = load(LS.sessionToken, null);
+
+  const [mmrInfo, setMmrInfo] = useState({ battleMMR: 1000, battleWins: 0, battleLosses: 0 });
+  const refreshMmr = () => {
+    authRequest("/auth/session", "GET", null, token)
+      .then((d) => setMmrInfo({ battleMMR: d.battleMMR || 1000, battleWins: d.battleWins || 0, battleLosses: d.battleLosses || 0 }))
+      .catch(() => {});
+  };
+  useEffect(() => { refreshMmr(); }, []);
+
+  const [phase, setPhase] = useState("menu"); // menu | searching | battle | result
+  const [searchElapsed, setSearchElapsed] = useState(0);
+  const [opponent, setOpponent] = useState(null);
+  const [rounds, setRounds] = useState([]);
+  const [roundIdx, setRoundIdx] = useState(0);
+  const [roundPhase, setRoundPhase] = useState("answering"); // answering | waiting | reveal
+  const [selected, setSelected] = useState(null);
+  const [hp, setHp] = useState({ you: 100, opp: 100 });
+  const [dmgTotal, setDmgTotal] = useState({ you: 0, opp: 0 });
+  const [reveal, setReveal] = useState(null);
+  const [finalResult, setFinalResult] = useState(null);
+
+  const cancelledRef = useRef(false);
+  const battleIdRef = useRef(null);
+  const answerResolverRef = useRef(null);
+  const autoSubmitTimerRef = useRef(null);
+  const roundStartRef = useRef(0);
+
+  useEffect(() => {
+    cancelledRef.current = false;
+    return () => {
+      cancelledRef.current = true;
+      clearTimeout(autoSubmitTimerRef.current);
+      // Harmless no-op if we weren't actually queued — always safe to call.
+      authRequest("/battle/leave", "POST", {}, token).catch(() => {});
+    };
+  }, []);
+
+  async function pollOpponentAnswer(idx) {
+    const deadline = Date.now() + 15000;
+    while (Date.now() < deadline) {
+      if (cancelledRef.current) return { correct: false, ms: BATTLE_ROUND_MS };
+      try {
+        const d = await authRequest(`/battle/state?battleId=${battleIdRef.current}`, "GET", null, token);
+        const ans = d.answers?.[idx]?.opp;
+        if (ans) return ans;
+      } catch { /* transient — keep polling until the deadline */ }
+      await sleep(900);
+    }
+    return { correct: false, ms: BATTLE_ROUND_MS };
+  }
+
+  function dmgFor(a) {
+    if (!a.correct) return 0;
+    const speed = Math.max(0, Math.min(1, (BATTLE_ROUND_MS - a.ms) / BATTLE_ROUND_MS));
+    return Math.round(8 + speed * 12);
+  }
+
+  async function finishBattle(opp, finalHp, finalDmg) {
+    const win = finalHp.you > finalHp.opp || (finalHp.you === finalHp.opp && finalDmg.you > finalDmg.opp);
+    const draw = finalHp.you === finalHp.opp && finalDmg.you === finalDmg.opp;
+    let mmrDelta = 0;
+    try {
+      if (opp.isBot) {
+        const r = await authRequest("/battle/bot-result", "POST", { win, draw }, token);
+        mmrDelta = r.mmrDelta || 0;
+      } else {
+        const r = await authRequest("/battle/finish", "POST", { battleId: battleIdRef.current, myScore: finalHp.you, oppScore: finalHp.opp }, token);
+        mmrDelta = r.mmrDelta || 0;
+      }
+    } catch { /* leaderboard-style best-effort — battle result still shows locally */ }
+    if (cancelledRef.current) return;
+    refreshMmr();
+    setFinalResult({ win: draw ? null : win, finalHp, mmrDelta });
+    setPhase("result");
+  }
+
+  async function runRound(idx, roundsArr, opp, hpNow, dmgNow) {
+    if (cancelledRef.current) return;
+    setRoundIdx(idx);
+    setSelected(null);
+    setReveal(null);
+    setRoundPhase("answering");
+    roundStartRef.current = Date.now();
+
+    const answerPromise = new Promise((resolve) => {
+      answerResolverRef.current = resolve;
+      autoSubmitTimerRef.current = setTimeout(() => {
+        if (answerResolverRef.current) {
+          const fn = answerResolverRef.current;
+          answerResolverRef.current = null;
+          fn({ correct: false, ms: BATTLE_ROUND_MS });
+        }
+      }, BATTLE_ROUND_MS);
+    });
+
+    const oppPromise = opp.isBot
+      ? new Promise((resolve) => {
+          const profile = BOT_PROFILE[opp.rankName] || BOT_PROFILE.Bronze;
+          const delay = profile.minMs + Math.random() * (profile.maxMs - profile.minMs);
+          setTimeout(() => resolve({ correct: Math.random() < profile.acc, ms: Math.round(delay) }), delay);
+        })
+      : pollOpponentAnswer(idx);
+
+    const mine = await answerPromise;
+    clearTimeout(autoSubmitTimerRef.current);
+    if (cancelledRef.current) return;
+    setRoundPhase("waiting");
+    if (!opp.isBot) {
+      authRequest("/battle/answer", "POST", { battleId: battleIdRef.current, round: idx, correct: mine.correct, ms: mine.ms }, token).catch(() => {});
+    }
+    const oppAnswer = await oppPromise;
+    if (cancelledRef.current) return;
+
+    const youDmg = dmgFor(mine);
+    const oppDmg = dmgFor(oppAnswer);
+    const newHp = { you: Math.max(0, hpNow.you - oppDmg), opp: Math.max(0, hpNow.opp - youDmg) };
+    const newDmg = { you: dmgNow.you + youDmg, opp: dmgNow.opp + oppDmg };
+    setHp(newHp);
+    setDmgTotal(newDmg);
+    setReveal({ mineCorrect: mine.correct, oppCorrect: oppAnswer.correct, youDmg, oppDmg });
+    setRoundPhase("reveal");
+
+    await sleep(1600);
+    if (cancelledRef.current) return;
+
+    const done = newHp.you <= 0 || newHp.opp <= 0 || idx + 1 >= roundsArr.length;
+    if (done) finishBattle(opp, newHp, newDmg);
+    else runRound(idx + 1, roundsArr, opp, newHp, newDmg);
+  }
+
+  function beginBattle(opp) {
+    const roundsArr = battleRoundsFor(opp.seed, opp.tierId, BATTLE_ROUNDS);
+    setOpponent(opp);
+    setRounds(roundsArr);
+    setHp({ you: 100, opp: 100 });
+    setDmgTotal({ you: 0, opp: 0 });
+    setFinalResult(null);
+    setPhase("battle");
+    runRound(0, roundsArr, opp, { you: 100, opp: 100 }, { you: 0, opp: 0 });
+  }
+
+  async function startMatch() {
+    cancelledRef.current = false;
+    setPhase("searching");
+    setSearchElapsed(0);
+    const startedAt = Date.now();
+    let matchedId = null;
+    try {
+      const q = await authRequest("/battle/queue", "POST", {}, token);
+      if (q.battleId) matchedId = q.battleId;
+    } catch { /* fall through to bot match below */ }
+
+    while (!matchedId && !cancelledRef.current && Date.now() - startedAt < BATTLE_QUEUE_TIMEOUT_MS) {
+      await sleep(900);
+      if (cancelledRef.current) return;
+      setSearchElapsed(Date.now() - startedAt);
+      try {
+        const p = await authRequest("/battle/poll", "GET", null, token);
+        if (p.battleId) matchedId = p.battleId;
+      } catch { /* keep polling */ }
+    }
+    if (cancelledRef.current) return;
+
+    if (matchedId) {
+      battleIdRef.current = matchedId;
+      try {
+        const state = await authRequest(`/battle/state?battleId=${matchedId}`, "GET", null, token);
+        beginBattle({
+          isBot: false, username: state.opponentUsername,
+          rankName: rankForMmr(state.mmrs.opp).name, tierId: state.tier, seed: matchedId,
+        });
+        return;
+      } catch { /* couldn't load the matched room — fall back to a bot below */ }
+    }
+
+    authRequest("/battle/leave", "POST", {}, token).catch(() => {});
+    const myRank = rankForMmr(mmrInfo.battleMMR);
+    beginBattle({
+      isBot: true, username: isZh ? `AI · ${myRank.zh}` : `Bot · ${myRank.name}`,
+      rankName: myRank.name, tierId: wordTierForRankName(myRank.name), seed: `bot-${Date.now()}-${Math.random()}`,
+    });
+  }
+
+  function cancelSearch() {
+    cancelledRef.current = true;
+    authRequest("/battle/leave", "POST", {}, token).catch(() => {});
+    setPhase("menu");
+  }
+
+  function chooseAnswer(i) {
+    if (roundPhase !== "answering" || !answerResolverRef.current) return;
+    const roundData = rounds[roundIdx];
+    setSelected(i);
+    const fn = answerResolverRef.current;
+    answerResolverRef.current = null;
+    fn({ correct: roundData.choices[i] === roundData.correct, ms: Date.now() - roundStartRef.current });
+  }
+
+  const myRank = rankForMmr(mmrInfo.battleMMR);
+
+  if (phase === "menu") {
+    return (
+      <div className="max-w-2xl mx-auto px-4 sm:px-8 py-6 sm:py-10">
+        <header className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)] mb-1">{isZh ? "对战" : "Battle"}</p>
+            <h2 className="text-2xl font-semibold text-[color:var(--text)]">{isZh ? "词汇对决" : "Vocabulary Duel"}</h2>
+          </div>
+          <div className={`h-12 w-12 rounded-2xl bg-gradient-to-br ${myRank.grad} bg-opacity-20 ring-1 ring-[color:var(--border)] flex items-center justify-center shrink-0`}>
+            <Swords size={20} className="text-[#0a0e14]" />
+          </div>
+        </header>
+
+        <div className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-5 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className={`text-lg font-semibold ${myRank.text}`}>{isZh ? myRank.zh : myRank.name}</p>
+              <p className="text-xs text-[color:var(--text-faint)]">{mmrInfo.battleMMR} MMR</p>
+            </div>
+            <div className="text-right text-xs text-[color:var(--text-dim)]">
+              <p>{mmrInfo.battleWins}{isZh ? " 胜" : "W"} · {mmrInfo.battleLosses}{isZh ? " 负" : "L"}</p>
+            </div>
+          </div>
+          <div className="flex gap-1.5">
+            {BATTLE_RANKS.map((r) => (
+              <div key={r.name} className={`flex-1 h-1.5 rounded-full bg-gradient-to-r ${r.grad} ${r.name === myRank.name ? "opacity-100" : "opacity-25"}`} />
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-6 text-center">
+          <p className="text-sm text-[color:var(--text-dim)] mb-4">
+            {isZh ? `${BATTLE_ROUNDS} 回合，答对越快伤害越高。找不到对手 5 秒内自动匹配 AI。`
+              : `${BATTLE_ROUNDS} rounds — answer fast and correct to deal more damage. No opponent in 5s falls back to a bot.`}
+          </p>
+          <button onClick={startMatch}
+            className="btn-pulse press-scale px-6 py-3 rounded-xl bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 transition inline-flex items-center gap-2">
+            <Swords size={16} /> {isZh ? "开始对战" : "Find Battle"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === "searching") {
+    const remaining = Math.max(0, Math.ceil((BATTLE_QUEUE_TIMEOUT_MS - searchElapsed) / 1000));
+    return (
+      <div className="max-w-md mx-auto px-4 py-16 text-center">
+        <Loader2 size={28} className="animate-spin text-[color:var(--accent-text)] mx-auto mb-4" />
+        <p className="text-sm font-medium text-[color:var(--text)] mb-1">{isZh ? "正在寻找对手…" : "Searching for an opponent…"}</p>
+        <p className="text-xs text-[color:var(--text-faint)] mb-6">{isZh ? `${remaining} 秒后匹配 AI` : `Falls back to a bot in ${remaining}s`}</p>
+        <button onClick={cancelSearch} className="press-scale px-4 py-2 rounded-lg ring-1 ring-[color:var(--border)] text-sm text-[color:var(--text-dim)] hover:text-[color:var(--text)]">
+          {isZh ? "取消" : "Cancel"}
+        </button>
+      </div>
+    );
+  }
+
+  if (phase === "battle") {
+    const roundData = rounds[roundIdx];
+    if (!roundData) return null;
+    return (
+      <div className="max-w-2xl mx-auto px-4 sm:px-8 py-6 sm:py-10">
+        <div className="flex items-center gap-4 mb-6">
+          <BattleHpBar label={isZh ? "你" : "You"} hp={hp.you} tint="from-emerald-400 to-emerald-500" />
+          <span className="text-xs text-[color:var(--text-faint)] shrink-0">{isZh ? "回合" : "Round"} {roundIdx + 1}/{rounds.length}</span>
+          <BattleHpBar label={opponent.username} hp={hp.opp} tint="from-rose-400 to-rose-500" />
+        </div>
+
+        <div className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-6 sm:p-8 text-center mb-5">
+          <p className="text-3xl font-semibold text-[color:var(--text)] mb-1">{roundData.word}</p>
+          <p className="text-sm text-[color:var(--text-faint)]">{roundData.zh}</p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-2.5">
+          {roundData.choices.map((c, i) => {
+            const isCorrect = c === roundData.correct;
+            const isSelected = selected === i;
+            let cls = "ring-[color:var(--border)] text-[color:var(--text)] hover:ring-accent-400/40";
+            if (roundPhase === "reveal") {
+              if (isCorrect) cls = "ring-emerald-400 bg-emerald-500/10 text-emerald-400";
+              else if (isSelected) cls = "ring-rose-400 bg-rose-500/10 text-rose-400";
+              else cls = "ring-[color:var(--border)] text-[color:var(--text-faint)] opacity-60";
+            } else if (isSelected) {
+              cls = "ring-accent-400 bg-accent-500/10 text-[color:var(--accent-text)]";
+            }
+            return (
+              <button key={i} disabled={roundPhase !== "answering"} onClick={() => chooseAnswer(i)}
+                className={`press-scale text-left px-4 py-3 rounded-lg ring-1 text-sm transition ${cls}`}>
+                {c}
+              </button>
+            );
+          })}
+        </div>
+
+        {roundPhase === "waiting" && (
+          <p className="text-center text-xs text-[color:var(--text-faint)] mt-5">{isZh ? "等待对手…" : "Waiting for opponent…"}</p>
+        )}
+        {roundPhase === "reveal" && reveal && (
+          <div className="flex items-center justify-center gap-6 mt-5 text-xs">
+            <span className={reveal.mineCorrect ? "text-emerald-400" : "text-rose-400"}>
+              {isZh ? "你" : "You"}: {reveal.mineCorrect ? `-${reveal.youDmg} HP` : (isZh ? "未命中" : "miss")}
+            </span>
+            <span className={reveal.oppCorrect ? "text-emerald-400" : "text-rose-400"}>
+              {opponent.username}: {reveal.oppCorrect ? `-${reveal.oppDmg} HP` : (isZh ? "未命中" : "miss")}
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (phase === "result" && finalResult) {
+    const { win, finalHp, mmrDelta } = finalResult;
+    const label = win === null ? (isZh ? "平局" : "Draw") : win ? (isZh ? "胜利" : "Victory") : (isZh ? "失败" : "Defeat");
+    const tint = win === null ? "text-[color:var(--text)]" : win ? "text-emerald-400" : "text-rose-400";
+    return (
+      <div className="max-w-md mx-auto px-4 py-16 text-center">
+        <p className={`text-3xl font-bold mb-2 ${tint}`}>{label}</p>
+        <p className="text-sm text-[color:var(--text-dim)] mb-1">
+          {isZh ? "你" : "You"} {Math.round(finalHp.you)} HP — {opponent.username} {Math.round(finalHp.opp)} HP
+        </p>
+        <p className={`text-sm font-medium mb-8 ${mmrDelta > 0 ? "text-emerald-400" : mmrDelta < 0 ? "text-rose-400" : "text-[color:var(--text-faint)]"}`}>
+          {mmrDelta > 0 ? `+${mmrDelta}` : mmrDelta} MMR → {mmrInfo.battleMMR} ({isZh ? rankForMmr(mmrInfo.battleMMR).zh : rankForMmr(mmrInfo.battleMMR).name})
+        </p>
+        <button onClick={() => setPhase("menu")}
+          className="btn-pulse press-scale px-6 py-3 rounded-xl bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 transition inline-flex items-center gap-2">
+          <Swords size={16} /> {isZh ? "再来一局" : "Battle Again"}
+        </button>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 function LeaderboardView({ profile, setProfile, uiLang, liveStats, setVocabTestResult, onCreateList, leaderboardUserId }) {
   const [tab, setTab] = useState("totalLearned");
   const [entries, setEntries] = useState([]);
