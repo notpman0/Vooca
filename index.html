@@ -100,6 +100,7 @@ const AlertTriangle = (p) => <Icon {...p} path='<path d="M10.29 3.86 1.82 18a2 2
 const Trash2 = (p) => <Icon {...p} path='<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>' />;
 const ArrowLeft = (p) => <Icon {...p} path='<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>' />;
 const Loader2 = (p) => <Icon {...p} path='<path d="M21 12a9 9 0 1 1-6.219-8.56"/>' />;
+const Clock = (p) => <Icon {...p} path='<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>' />;
 const ShieldCheck = (p) => <Icon {...p} path='<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><polyline points="9 12 11 14 15 10"/>' />;
 const ShieldAlert = (p) => <Icon {...p} path='<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="16" x2="12.01" y2="16"/>' />;
 const ChevronRight = (p) => <Icon {...p} path='<polyline points="9 18 15 12 9 6"/>' />;
@@ -179,15 +180,71 @@ const LEADERBOARD_CATEGORIES = [
   { id: "streak", label: "Streak", icon: "Flame" },
 ];
 
-// Original word bank for the vocabulary-size estimation test — five rough
-// frequency bands (common -> rare) plus invented non-words used as controls
-// to catch over-claiming. Not sourced from any existing published test.
-const VOCAB_TEST_BANDS = [
-  { label: "Everyday", pool: 1000, words: ["happy", "water", "quick", "friend", "night", "open", "small", "house", "quiet", "strong"] },
-  { label: "Common", pool: 2000, words: ["decide", "wonder", "curious", "ancient", "gentle", "forgive", "hollow", "splendid", "narrow", "harvest"] },
-  { label: "Intermediate", pool: 5000, words: ["meticulous", "ambiguous", "resilient", "plausible", "arbitrary", "coherent", "inevitable", "subtle", "candid", "tedious"] },
-  { label: "Advanced", pool: 8000, words: ["ubiquitous", "ephemeral", "cogent", "obfuscate", "laconic", "sycophant", "perfunctory", "vindicate", "austere", "garrulous"] },
-  { label: "Rare", pool: 15000, words: ["sesquipedalian", "antediluvian", "perspicacious", "pusillanimous", "obstreperous", "mellifluous", "recalcitrant", "ineffable", "quixotic", "ersatz"] },
+// Original word bank for the adaptive reading-vocabulary test — six CEFR-style
+// difficulty tiers (A1 -> C2), each word carrying its own short gloss for
+// multiple-choice matching, plus invented non-words used as controls to catch
+// over-claiming. Not sourced from any existing published test.
+const VOCAB_TEST_TIERS = [
+  { id: "A1", exam: "Beginner", pool: 600, words: [
+    { w: "happy", zh: "快乐的", en: "feeling joy" },
+    { w: "water", zh: "水", en: "a clear liquid" },
+    { w: "quick", zh: "快的", en: "moving fast" },
+    { w: "friend", zh: "朋友", en: "a close companion" },
+    { w: "night", zh: "夜晚", en: "the dark part of the day" },
+    { w: "small", zh: "小的", en: "little in size" },
+    { w: "house", zh: "房子", en: "a building people live in" },
+    { w: "strong", zh: "强壮的", en: "having great physical power" },
+  ] },
+  { id: "A2", exam: "Elementary", pool: 1500, words: [
+    { w: "decide", zh: "决定", en: "to make a choice" },
+    { w: "wonder", zh: "好奇", en: "to want to know something" },
+    { w: "curious", zh: "好奇的", en: "eager to learn or know" },
+    { w: "ancient", zh: "古老的", en: "very old" },
+    { w: "gentle", zh: "温和的", en: "mild and kind" },
+    { w: "forgive", zh: "原谅", en: "to pardon someone" },
+    { w: "hollow", zh: "空心的", en: "empty on the inside" },
+    { w: "splendid", zh: "极好的", en: "very impressive" },
+  ] },
+  { id: "B1", exam: "CET-4", pool: 3000, words: [
+    { w: "meticulous", zh: "一丝不苟的", en: "very careful with details" },
+    { w: "ambiguous", zh: "模糊的", en: "unclear in meaning" },
+    { w: "resilient", zh: "有韧性的", en: "quick to recover from difficulty" },
+    { w: "plausible", zh: "似乎合理的", en: "seeming reasonable or true" },
+    { w: "arbitrary", zh: "任意的", en: "based on random choice" },
+    { w: "coherent", zh: "连贯的", en: "logical and consistent" },
+    { w: "inevitable", zh: "不可避免的", en: "certain to happen" },
+    { w: "subtle", zh: "微妙的", en: "not obvious, delicate" },
+  ] },
+  { id: "B2", exam: "CET-6", pool: 6000, words: [
+    { w: "ubiquitous", zh: "无处不在的", en: "found everywhere" },
+    { w: "ephemeral", zh: "短暂的", en: "lasting a very short time" },
+    { w: "cogent", zh: "有说服力的", en: "clear and convincing" },
+    { w: "obfuscate", zh: "使模糊", en: "to make something unclear" },
+    { w: "laconic", zh: "简洁的", en: "using very few words" },
+    { w: "sycophant", zh: "谄媚者", en: "a person who flatters others" },
+    { w: "perfunctory", zh: "敷衍的", en: "done without real care" },
+    { w: "vindicate", zh: "证明无罪", en: "to clear someone of blame" },
+  ] },
+  { id: "C1", exam: "TOEFL / IELTS", pool: 10000, words: [
+    { w: "austere", zh: "朴素的", en: "severely simple, plain" },
+    { w: "garrulous", zh: "多话的", en: "very talkative" },
+    { w: "sesquipedalian", zh: "爱用长词的", en: "fond of using long words" },
+    { w: "antediluvian", zh: "极过时的", en: "extremely old-fashioned" },
+    { w: "perspicacious", zh: "有洞察力的", en: "having keen insight" },
+    { w: "pusillanimous", zh: "懦弱的", en: "lacking courage" },
+    { w: "obstreperous", zh: "喧闹反抗的", en: "noisily defiant" },
+    { w: "mellifluous", zh: "悦耳的", en: "sweet and smooth sounding" },
+  ] },
+  { id: "C2", exam: "GRE / Advanced", pool: 20000, words: [
+    { w: "recalcitrant", zh: "顽固的", en: "stubbornly resistant" },
+    { w: "ineffable", zh: "难以言表的", en: "too great to be expressed in words" },
+    { w: "quixotic", zh: "不切实际的", en: "idealistic and impractical" },
+    { w: "ersatz", zh: "假的", en: "an artificial substitute" },
+    { w: "obdurate", zh: "固执的", en: "stubbornly refusing to change" },
+    { w: "effulgent", zh: "光辉的", en: "shining brightly" },
+    { w: "sedulous", zh: "勤勉的", en: "diligent and persistent" },
+    { w: "incorrigible", zh: "屡教不改的", en: "impossible to reform" },
+  ] },
 ];
 const VOCAB_TEST_FAKES = ["glimmerate", "trepidous", "fluxenary", "consolute", "brindlement", "vexolate", "quandric", "sombrature"];
 
@@ -1216,50 +1273,116 @@ function LeaderboardView({ profile, setProfile, uiLang, liveStats, setVocabTestR
   );
 }
 
-const VOCAB_TEST_QUESTIONS_PER_BAND = 6;
+const VOCAB_TEST_TIME_LIMIT = 7;
+const VOCAB_TEST_MAX_QUESTIONS = 22;
+const VOCAB_TEST_CONTROL_EVERY = 5;
+
+// Adaptive reading-vocabulary test: shows the written word, asks the tester to
+// match it to its definition (Chinese gloss, or an English gloss/synonym when
+// uiLang is "en"), climbs a tier on a correct answer and drops a tier on a
+// wrong one or a timeout, and periodically slips in an invented control word
+// (no real definition, Know/Don't-know format) to catch over-claiming.
+function genMCQuestion(tierIdx, isZh, usedMap) {
+  const tier = VOCAB_TEST_TIERS[tierIdx];
+  const usedWords = usedMap[tier.id] || [];
+  const avail = tier.words.filter((w) => !usedWords.includes(w.w));
+  const pool = avail.length ? avail : tier.words;
+  const word = pool[Math.floor(Math.random() * pool.length)];
+  let distractorSource = tier.words.filter((w) => w.w !== word.w);
+  if (distractorSource.length < 3) {
+    const neighborIdx = tierIdx + 1 < VOCAB_TEST_TIERS.length ? tierIdx + 1 : tierIdx - 1;
+    distractorSource = distractorSource.concat(VOCAB_TEST_TIERS[neighborIdx]?.words || []);
+  }
+  const distractors = [...distractorSource].sort(() => Math.random() - 0.5).slice(0, 3);
+  const defOf = (item) => (isZh ? item.zh : item.en);
+  const choices = [{ text: defOf(word), correct: true }, ...distractors.map((d) => ({ text: defOf(d), correct: false }))]
+    .sort(() => Math.random() - 0.5);
+  return { type: "mc", tierIdx, tierId: tier.id, word: word.w, choices };
+}
+
+function genControlQuestion(usedFakes) {
+  const avail = VOCAB_TEST_FAKES.filter((w) => !usedFakes.includes(w));
+  const pool = avail.length ? avail : VOCAB_TEST_FAKES;
+  return { type: "control", word: pool[Math.floor(Math.random() * pool.length)] };
+}
 
 function VocabSizeTest({ uiLang, onDone, onClose, setVocabTestResult }) {
   const isZh = uiLang === "zh";
-  const [questions] = useState(() => {
-    const qs = [];
-    VOCAB_TEST_BANDS.forEach((band) => {
-      const picks = [...band.words].sort(() => Math.random() - 0.5).slice(0, VOCAB_TEST_QUESTIONS_PER_BAND);
-      picks.forEach((w) => qs.push({ word: w, pool: band.pool, real: true }));
-    });
-    const fakeCount = Math.round(qs.length * 0.2);
-    const fakes = [...VOCAB_TEST_FAKES].sort(() => Math.random() - 0.5).slice(0, fakeCount);
-    fakes.forEach((w) => qs.push({ word: w, pool: 0, real: false }));
-    return qs.sort(() => Math.random() - 0.5);
-  });
-  const [known, setKnown] = useState({});
-  const [step, setStep] = useState(0);
+  const [tierIdx, setTierIdx] = useState(Math.floor(VOCAB_TEST_TIERS.length / 2));
+  const [used, setUsed] = useState({});
+  const [usedFakes, setUsedFakes] = useState([]);
+  const [history, setHistory] = useState({});
+  const [fakeStats, setFakeStats] = useState({ asked: 0, falsePositive: 0 });
+  const [qIndex, setQIndex] = useState(0);
+  const [current, setCurrent] = useState(() => genMCQuestion(Math.floor(VOCAB_TEST_TIERS.length / 2), isZh, {}));
+  const [timeLeft, setTimeLeft] = useState(VOCAB_TEST_TIME_LIMIT);
   const [result, setResult] = useState(null);
 
-  const toggle = (i, val) => setKnown((k) => ({ ...k, [i]: val }));
+  useEffect(() => {
+    if (!current || result !== null) return;
+    if (timeLeft <= 0) { submitAnswer(null); return; }
+    const id = setTimeout(() => setTimeLeft((t) => t - 1), 1000);
+    return () => clearTimeout(id);
+  }, [current, timeLeft, result]);
 
-  const finish = () => {
-    let correctReal = 0, totalReal = 0, falsePositives = 0, totalFake = 0;
-    questions.forEach((q, i) => {
-      if (q.real) { totalReal++; if (known[i]) correctReal++; }
-      else { totalFake++; if (known[i]) falsePositives++; }
+  const finish = (hist, fStats) => {
+    let estimate = 0, prevPool = 0, reachedAny = false, level = null;
+    VOCAB_TEST_TIERS.forEach((tier) => {
+      const h = hist[tier.id];
+      const delta = tier.pool - prevPool;
+      let acc;
+      if (h) { acc = h.correct / h.asked; reachedAny = true; if (acc >= 0.5) level = tier; }
+      else { acc = reachedAny ? 0 : 1; }
+      estimate += delta * acc;
+      prevPool = tier.pool;
     });
-    const fakeRate = totalFake ? falsePositives / totalFake : 0;
-    const rawKnownRatio = totalReal ? correctReal / totalReal : 0;
-    const adjustedRatio = Math.max(0, rawKnownRatio - fakeRate);
-    const maxPool = VOCAB_TEST_BANDS[VOCAB_TEST_BANDS.length - 1].pool;
-    const estimate = Math.round(adjustedRatio * maxPool);
-    setResult(estimate);
-    setVocabTestResult(() => estimate);
+    const fakeRate = fStats.asked ? fStats.falsePositive / fStats.asked : 0;
+    const finalEstimate = Math.max(0, Math.round(estimate * (1 - fakeRate)));
+    setResult({ estimate: finalEstimate, level });
+    setVocabTestResult(() => finalEstimate);
+  };
+
+  const proceed = (nextTierIdx, usedMap, usedFakesList, fStats, hist) => {
+    const newQIndex = qIndex + 1;
+    setQIndex(newQIndex);
+    setTimeLeft(VOCAB_TEST_TIME_LIMIT);
+    if (newQIndex >= VOCAB_TEST_MAX_QUESTIONS) { finish(hist, fStats); return; }
+    const useControl = newQIndex % VOCAB_TEST_CONTROL_EVERY === 0;
+    setCurrent(useControl ? genControlQuestion(usedFakesList) : genMCQuestion(nextTierIdx, isZh, usedMap));
+  };
+
+  const submitAnswer = (answer) => {
+    if (!current || result !== null) return;
+    if (current.type === "control") {
+      const isKnowClaim = answer === true;
+      const newFakeStats = { asked: fakeStats.asked + 1, falsePositive: fakeStats.falsePositive + (isKnowClaim ? 1 : 0) };
+      const newUsedFakes = [...usedFakes, current.word];
+      setFakeStats(newFakeStats);
+      setUsedFakes(newUsedFakes);
+      proceed(tierIdx, used, newUsedFakes, newFakeStats, history);
+      return;
+    }
+    const correct = answer !== null && current.choices[answer].correct;
+    const prevHist = history[current.tierId] || { asked: 0, correct: 0 };
+    const newHistory = { ...history, [current.tierId]: { asked: prevHist.asked + 1, correct: prevHist.correct + (correct ? 1 : 0) } };
+    const newUsed = { ...used, [current.tierId]: [...(used[current.tierId] || []), current.word] };
+    const nextTier = correct ? Math.min(current.tierIdx + 1, VOCAB_TEST_TIERS.length - 1) : Math.max(current.tierIdx - 1, 0);
+    setHistory(newHistory);
+    setUsed(newUsed);
+    setTierIdx(nextTier);
+    proceed(nextTier, newUsed, usedFakes, fakeStats, newHistory);
   };
 
   if (result !== null) {
+    const examLabel = result.level ? (isZh ? `${result.level.id} · ${result.level.exam}` : `${result.level.id} (${result.level.exam})`) : (isZh ? "入门" : "Beginner");
     return (
       <div className="max-w-lg mx-auto px-4 sm:px-8 py-10 text-center">
         <Target size={36} className="mx-auto text-[color:var(--accent-text)] mb-4" />
         <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)] mb-2">{isZh ? "测词汇量结果" : "Vocabulary size result"}</p>
-        <h2 className="text-4xl font-bold text-[color:var(--text)] mb-2">~{result.toLocaleString()}</h2>
-        <p className="text-sm text-[color:var(--text-dim)] mb-8">{isZh ? "估计词汇量（单词）" : "estimated words known"}</p>
-        <button onClick={() => onDone(result)}
+        <h2 className="text-4xl font-bold text-[color:var(--text)] mb-2">~{result.estimate.toLocaleString()}</h2>
+        <p className="text-sm text-[color:var(--text-dim)] mb-1">{isZh ? "估计词汇量（单词）" : "estimated words known"}</p>
+        <p className="text-xs text-[color:var(--accent-text)] mb-8">{isZh ? "阅读水平" : "Reading level"}: {examLabel}</p>
+        <button onClick={() => onDone(result.estimate)}
           className="px-6 py-3 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400 transition">
           {isZh ? "完成" : "Done"}
         </button>
@@ -1267,31 +1390,61 @@ function VocabSizeTest({ uiLang, onDone, onClose, setVocabTestResult }) {
     );
   }
 
-  const q = questions[step];
-  const progress = ((step) / questions.length) * 100;
+  const tier = current.type === "mc" ? VOCAB_TEST_TIERS[current.tierIdx] : null;
+  const progress = (qIndex / VOCAB_TEST_MAX_QUESTIONS) * 100;
+  const timeProgress = (timeLeft / VOCAB_TEST_TIME_LIMIT) * 100;
 
   return (
     <div className="max-w-lg mx-auto px-4 sm:px-8 py-10">
-      <div className="flex items-center justify-between mb-6">
-        <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)]">{isZh ? "测词汇量" : "Vocabulary size test"}</p>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)]">
+          {isZh ? "测词汇量" : "Vocabulary size test"}{tier && <span className="ml-2 text-[color:var(--text-faint)] normal-case tracking-normal">{tier.id}</span>}
+        </p>
         <button onClick={onClose} className="text-[color:var(--text-faint)] hover:text-[color:var(--text)]"><X size={18} /></button>
       </div>
-      <div className="h-1.5 rounded-full bg-[color:var(--border)] mb-8 overflow-hidden">
+      <div className="h-1.5 rounded-full bg-[color:var(--border)] mb-4 overflow-hidden">
         <div className="h-full bg-emerald-500 transition-all" style={{ width: `${progress}%` }} />
       </div>
-      <p className="text-[11px] text-[color:var(--text-faint)] mb-2 text-center">{isZh ? "你认识这个单词吗？" : "Do you know this word?"}</p>
-      <h2 className="text-4xl font-semibold text-center text-[color:var(--text)] mb-10">{q.word}</h2>
-      <div className="grid grid-cols-2 gap-3">
-        <button onClick={() => { toggle(step, false); setStep((s) => s + 1 === questions.length ? s : s + 1); if (step + 1 === questions.length) setTimeout(finish, 0); }}
-          className="py-4 rounded-lg ring-1 ring-[color:var(--border)] text-sm font-medium text-[color:var(--text-dim)] hover:ring-rose-500/40 hover:text-rose-500 transition">
-          {isZh ? "不认识" : "Don't know"}
-        </button>
-        <button onClick={() => { toggle(step, true); setStep((s) => s + 1 === questions.length ? s : s + 1); if (step + 1 === questions.length) setTimeout(finish, 0); }}
-          className="py-4 rounded-lg ring-1 ring-[color:var(--border)] text-sm font-medium text-[color:var(--text-dim)] hover:ring-emerald-500/40 hover:text-emerald-500 transition">
-          {isZh ? "认识" : "Know it"}
-        </button>
+
+      <div className={`flex items-center justify-center gap-1.5 text-xs font-mono mb-6 ${timeLeft <= 2 ? "text-rose-500" : "text-[color:var(--text-faint)]"}`}>
+        <Clock size={13} />
+        <span>{timeLeft}s</span>
+        <div className="w-24 h-1 rounded-full bg-[color:var(--border)] overflow-hidden ml-1">
+          <div className={`h-full transition-all ${timeLeft <= 2 ? "bg-rose-500" : "bg-emerald-500"}`} style={{ width: `${timeProgress}%` }} />
+        </div>
       </div>
-      <p className="text-center text-[11px] text-[color:var(--text-faint)] mt-6">{step + 1} / {questions.length}</p>
+
+      {current.type === "mc" ? (
+        <>
+          <p className="text-[11px] text-[color:var(--text-faint)] mb-2 text-center">{isZh ? "选择正确的释义" : "Choose the correct definition"}</p>
+          <h2 className="text-4xl font-semibold text-center text-[color:var(--text)] mb-8">{current.word}</h2>
+          <div className="grid grid-cols-1 gap-2.5">
+            {current.choices.map((c, i) => (
+              <button key={i} onClick={() => submitAnswer(i)}
+                className="text-left px-4 py-3 rounded-lg ring-1 ring-[color:var(--border)] text-sm text-[color:var(--text)] hover:ring-emerald-500/40 hover:bg-emerald-500/5 transition">
+                {c.text}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="text-[11px] text-[color:var(--text-faint)] mb-2 text-center">{isZh ? "你认识这个单词吗？" : "Do you know this word?"}</p>
+          <h2 className="text-4xl font-semibold text-center text-[color:var(--text)] mb-10">{current.word}</h2>
+          <div className="grid grid-cols-2 gap-3">
+            <button onClick={() => submitAnswer(false)}
+              className="py-4 rounded-lg ring-1 ring-[color:var(--border)] text-sm font-medium text-[color:var(--text-dim)] hover:ring-rose-500/40 hover:text-rose-500 transition">
+              {isZh ? "不认识" : "Don't know"}
+            </button>
+            <button onClick={() => submitAnswer(true)}
+              className="py-4 rounded-lg ring-1 ring-[color:var(--border)] text-sm font-medium text-[color:var(--text-dim)] hover:ring-emerald-500/40 hover:text-emerald-500 transition">
+              {isZh ? "认识" : "Know it"}
+            </button>
+          </div>
+        </>
+      )}
+
+      <p className="text-center text-[11px] text-[color:var(--text-faint)] mt-6">{qIndex + 1} / {VOCAB_TEST_MAX_QUESTIONS}</p>
     </div>
   );
 }
