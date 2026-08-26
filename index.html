@@ -183,9 +183,7 @@ const PROVIDERS = {
     keyPlaceholder: "AIza...",
     keyHelp: "Free — get a key at aistudio.google.com/apikey",
     models: [
-      { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash — free tier, fast" },
-      { id: "gemini-1.5-pro", label: "Gemini 1.5 Pro — more capable" },
-      { id: "gemini-1.5-flash", label: "Gemini 1.5 Flash" },
+      { id: "gemini-3.6-flash", label: "Gemini 3.6 Flash — free tier, fast" },
     ],
   },
   openai: {
@@ -905,10 +903,28 @@ function SettingsView({ apiKey, setApiKey, model, setModel, provider, setProvide
         )}
 
         <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Model</label>
-        <select value={model} onChange={(e) => setModel(e.target.value)}
-          className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50">
-          {info.models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-        </select>
+        {(() => {
+          const isKnown = info.models.some((m) => m.id === model);
+          return (
+            <>
+              <select value={isKnown ? model : "__custom__"}
+                onChange={(e) => setModel(e.target.value === "__custom__" ? "" : e.target.value)}
+                className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50">
+                {info.models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+                <option value="__custom__">Custom model ID…</option>
+              </select>
+              {!isKnown && (
+                <>
+                  <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="e.g. gemini-3.6-flash"
+                    className="w-full mt-2 bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] font-mono focus:outline-none focus:ring-emerald-500/50" />
+                  <p className="text-[11px] text-[color:var(--text-faint)] mt-1.5">
+                    {model ? "Not in the built-in list — probably fine if the provider renamed/updated a model." : "Type the exact model ID from the provider's docs."}
+                  </p>
+                </>
+              )}
+            </>
+          );
+        })()}
       </section>
 
       <section className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-6">
