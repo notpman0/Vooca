@@ -245,7 +245,7 @@ const LEADERBOARD_CATEGORIES = [
 // multiple-choice matching, plus invented non-words used as controls to catch
 // over-claiming. Not sourced from any existing published test.
 const VOCAB_TEST_TIERS = [
-  { id: "A1", exam: "Beginner", pool: 600, words: [
+  { id: "A1", exam: "Beginner", pool: 1000, words: [
     { w: "happy", zh: "快乐的", en: "feeling joy" },
     { w: "water", zh: "水", en: "a clear liquid" },
     { w: "quick", zh: "快的", en: "moving fast" },
@@ -255,7 +255,7 @@ const VOCAB_TEST_TIERS = [
     { w: "house", zh: "房子", en: "a building people live in" },
     { w: "strong", zh: "强壮的", en: "having great physical power" },
   ] },
-  { id: "A2", exam: "Elementary", pool: 1500, words: [
+  { id: "A2", exam: "Elementary", pool: 2000, words: [
     { w: "decide", zh: "决定", en: "to make a choice" },
     { w: "wonder", zh: "好奇", en: "to want to know something" },
     { w: "curious", zh: "好奇的", en: "eager to learn or know" },
@@ -265,7 +265,7 @@ const VOCAB_TEST_TIERS = [
     { w: "hollow", zh: "空心的", en: "empty on the inside" },
     { w: "splendid", zh: "极好的", en: "very impressive" },
   ] },
-  { id: "B1", exam: "CET-4", pool: 3000, words: [
+  { id: "B1", exam: "CET-4", pool: 4000, words: [
     { w: "meticulous", zh: "一丝不苟的", en: "very careful with details" },
     { w: "ambiguous", zh: "模糊的", en: "unclear in meaning" },
     { w: "resilient", zh: "有韧性的", en: "quick to recover from difficulty" },
@@ -275,7 +275,7 @@ const VOCAB_TEST_TIERS = [
     { w: "inevitable", zh: "不可避免的", en: "certain to happen" },
     { w: "subtle", zh: "微妙的", en: "not obvious, delicate" },
   ] },
-  { id: "B2", exam: "CET-6", pool: 6000, words: [
+  { id: "B2", exam: "CET-6", pool: 7000, words: [
     { w: "ubiquitous", zh: "无处不在的", en: "found everywhere" },
     { w: "ephemeral", zh: "短暂的", en: "lasting a very short time" },
     { w: "cogent", zh: "有说服力的", en: "clear and convincing" },
@@ -285,7 +285,7 @@ const VOCAB_TEST_TIERS = [
     { w: "perfunctory", zh: "敷衍的", en: "done without real care" },
     { w: "vindicate", zh: "证明无罪", en: "to clear someone of blame" },
   ] },
-  { id: "C1", exam: "TOEFL / IELTS", pool: 10000, words: [
+  { id: "C1", exam: "TOEFL / IELTS", pool: 12000, words: [
     { w: "austere", zh: "朴素的", en: "severely simple, plain" },
     { w: "garrulous", zh: "多话的", en: "very talkative" },
     { w: "sesquipedalian", zh: "爱用长词的", en: "fond of using long words" },
@@ -330,9 +330,17 @@ function buildPersonalizedWordList(estimate, topicId) {
     const topic = TOPIC_PACKS.find((t) => t.id === topicId);
     pool = topic ? [...topic.words] : [];
   } else {
+    const maxIdx = VOCAB_TEST_TIERS.length - 1;
+    // First tier whose pool exceeds the estimate = the user's current level.
+    // If they're past every tier (beyond C2), anchor on the last one instead
+    // of falling off the end. Both bounds are clamped explicitly so a
+    // boundary estimate (or a future tier list edit) can never slice with an
+    // out-of-range or empty index.
     let tierIdx = VOCAB_TEST_TIERS.findIndex((t) => estimate < t.pool);
-    if (tierIdx === -1) tierIdx = VOCAB_TEST_TIERS.length - 1;
-    const nearTiers = [VOCAB_TEST_TIERS[tierIdx], VOCAB_TEST_TIERS[Math.min(tierIdx + 1, VOCAB_TEST_TIERS.length - 1)]];
+    if (tierIdx === -1) tierIdx = maxIdx;
+    const lowIdx = Math.max(0, Math.min(tierIdx, maxIdx));
+    const highIdx = Math.max(0, Math.min(tierIdx + 1, maxIdx));
+    const nearTiers = [VOCAB_TEST_TIERS[lowIdx], VOCAB_TEST_TIERS[highIdx]];
     pool = [...new Set(nearTiers.flatMap((t) => t.words.map((w) => w.w)))];
   }
   return [...pool].sort(() => Math.random() - 0.5).slice(0, Math.min(PERSONALIZED_LIST_SIZE, pool.length));
@@ -420,34 +428,51 @@ const buildExamples = (word) => {
   return out;
 };
 
-function AudioPronunciationButton({ word, size = 16, className = "" }) {
-  const [speaking, setSpeaking] = useState(false);
+// US/UK pronunciation. Browser voice availability varies a lot by OS — the
+// fallback chain always finds *some* English voice, but which accent you
+// actually get depends on what the browser shipped.
+function speakWord(word, accent, onStart, onEnd) {
+  if (typeof window === "undefined" || !window.speechSynthesis) return;
+  const synth = window.speechSynthesis;
+  const utter = new SpeechSynthesisUtterance(word);
+  const voices = synth.getVoices();
+  const targetLang = accent === "uk" ? "en-GB" : "en-US";
+  const preferred = voices.find((v) => v.lang === targetLang && /Google|Natural|Daniel|Samantha|Alex|Kate|Serena|Arthur|Karen/i.test(v.name))
+    || voices.find((v) => v.lang === targetLang)
+    || voices.find((v) => (v.lang || "").startsWith("en"));
+  if (preferred) utter.voice = preferred;
+  utter.rate = 0.92;
+  utter.pitch = 1;
+  utter.onstart = () => onStart && onStart();
+  utter.onend = () => onEnd && onEnd();
+  utter.onerror = () => onEnd && onEnd();
+  synth.cancel();
+  synth.speak(utter);
+}
+
+function AudioPronunciationButton({ word, size = 15, className = "" }) {
+  const [speaking, setSpeaking] = useState(null); // "us" | "uk" | null
   if (typeof window === "undefined" || !window.speechSynthesis) return null;
 
-  const speak = (e) => {
+  const speak = (accent) => (e) => {
     e.stopPropagation();
     e.preventDefault();
-    const synth = window.speechSynthesis;
-    const utter = new SpeechSynthesisUtterance(word);
-    const voices = synth.getVoices();
-    const preferred = voices.find((v) => /^en-(US|GB)$/.test(v.lang) && /Google|Natural|Samantha|Daniel|Alex/i.test(v.name))
-      || voices.find((v) => v.lang === "en-US")
-      || voices.find((v) => (v.lang || "").startsWith("en"));
-    if (preferred) utter.voice = preferred;
-    utter.rate = 0.92;
-    utter.pitch = 1;
-    utter.onstart = () => setSpeaking(true);
-    utter.onend = () => setSpeaking(false);
-    utter.onerror = () => setSpeaking(false);
-    synth.cancel();
-    synth.speak(utter);
+    speakWord(word, accent, () => setSpeaking(accent), () => setSpeaking(null));
   };
 
   return (
-    <button type="button" onClick={speak} title="Pronounce"
-      className={`inline-flex items-center justify-center rounded-full p-1.5 hover:bg-accent-500/10 transition ${className}`}>
-      <Volume2 size={size} className={speaking ? "text-accent-500 animate-pulse" : "text-[color:var(--text-faint)] hover:text-[color:var(--accent-text)]"} />
-    </button>
+    <span className={`inline-flex items-center gap-0.5 ${className}`} onClick={(e) => e.stopPropagation()}>
+      <button type="button" onClick={speak("us")} title="American pronunciation"
+        className={`inline-flex items-center gap-1 rounded-full px-1.5 py-1 text-[10px] font-semibold transition ${
+          speaking === "us" ? "text-accent-500" : "text-[color:var(--text-faint)] hover:text-[color:var(--accent-text)] hover:bg-accent-500/10"}`}>
+        <Volume2 size={size} className={speaking === "us" ? "animate-pulse" : ""} />US
+      </button>
+      <button type="button" onClick={speak("uk")} title="British pronunciation"
+        className={`inline-flex items-center gap-1 rounded-full px-1.5 py-1 text-[10px] font-semibold transition ${
+          speaking === "uk" ? "text-accent-500" : "text-[color:var(--text-faint)] hover:text-[color:var(--accent-text)] hover:bg-accent-500/10"}`}>
+        <Volume2 size={size} className={speaking === "uk" ? "animate-pulse" : ""} />UK
+      </button>
+    </span>
   );
 }
 
@@ -566,6 +591,10 @@ function getReviewMemorizePool(list) {
   const today = getTodayPool(list);
   const unfinished = today.filter((w) => (w.memRate || 0) < 100);
   return unfinished.length ? unfinished : today.slice(0, 10);
+}
+function getYesterdayPool(list) {
+  const yesterday = todayStr(new Date(Date.now() - 86400000));
+  return list.words.filter((w) => w.learnedOn === yesterday);
 }
 
 /* ---------------- Auth gate ---------------- */
@@ -911,13 +940,13 @@ function App({ onLogout }) {
   const [vocabTestResult, setVocabTestResult] = useState(() => load(nsKey("vocabTestResult"), 0));
 
   const isAdmin = CURRENT_EMAIL === ADMIN_EMAIL;
-  const [sessionInfo, setSessionInfo] = useState({ bonusPoints: 0, lastUsernameChange: null, vocabSizeOverride: null, leaderboardId: null });
+  const [sessionInfo, setSessionInfo] = useState({ bonusPoints: 0, lastUsernameChange: null, vocabSizeOverride: null, streakOverride: null, wordsLearnedOverride: null, wordsMasteredOverride: null, leaderboardId: null });
   const refreshSessionInfo = () => {
     const token = load(LS.sessionToken, null);
     if (!token) return;
     fetch(`${AUTH_BASE}/auth/session`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d) setSessionInfo({ bonusPoints: d.bonusPoints || 0, lastUsernameChange: d.lastUsernameChange || null, vocabSizeOverride: d.vocabSizeOverride ?? null, leaderboardId: d.leaderboardId || null }); })
+      .then((d) => { if (d) setSessionInfo({ bonusPoints: d.bonusPoints || 0, lastUsernameChange: d.lastUsernameChange || null, vocabSizeOverride: d.vocabSizeOverride ?? null, streakOverride: d.streakOverride ?? null, wordsLearnedOverride: d.wordsLearnedOverride ?? null, wordsMasteredOverride: d.wordsMasteredOverride ?? null, leaderboardId: d.leaderboardId || null }); })
       .catch(() => {});
   };
   useEffect(() => { refreshSessionInfo(); }, []);
@@ -961,12 +990,19 @@ function App({ onLogout }) {
   const totalIntroduced = allWords.filter((w) => w.seen).length;
   const totalMastered = allWords.filter((w) => w.box >= 5).length;
 
+  // Admin overrides only affect what's shown on the leaderboard/counted for
+  // points — they never touch the user's own local data (Dashboard keeps
+  // showing real progress; the vocab test experience is untouched too).
+  const effectiveTotalLearned = sessionInfo.wordsLearnedOverride ?? totalIntroduced;
+  const effectiveTotalMastered = sessionInfo.wordsMasteredOverride ?? totalMastered;
+  const effectiveStreak = sessionInfo.streakOverride ?? streak.count;
+
   // Points are derived from existing progress data rather than tracked as a
   // separate ledger, so they can never drift out of sync: +2 per word
   // introduced, +5 per word mastered, +10 per completed session, +1 per
   // streak day. What points unlock is still undecided — for now they're a
   // visible reward signal (Dashboard + leaderboard), nothing is spent yet.
-  const points = totalIntroduced * 2 + totalMastered * 5 + stats.sessions * 10 + streak.count + sessionInfo.bonusPoints;
+  const points = effectiveTotalLearned * 2 + effectiveTotalMastered * 5 + stats.sessions * 10 + effectiveStreak + sessionInfo.bonusPoints;
 
   // Backfills real example sentences (dictionaryapi.dev) for words in the
   // active list that don't have any yet, in small batches, so seed/imported/
@@ -1011,12 +1047,12 @@ function App({ onLogout }) {
         body: JSON.stringify({
           userId: leaderboardUserId,
           displayName: profile.displayName,
-          stats: { totalLearned: totalIntroduced, totalMastered, vocabSize: effectiveVocabSize, streak: streak.count, points },
+          stats: { totalLearned: effectiveTotalLearned, totalMastered: effectiveTotalMastered, vocabSize: effectiveVocabSize, streak: effectiveStreak, points },
         }),
       }).catch(() => {});
     }, 1200);
     return () => clearTimeout(t);
-  }, [profile.leaderboardOptIn, leaderboardUserId, profile.displayName, totalIntroduced, totalMastered, effectiveVocabSize, streak.count, points]);
+  }, [profile.leaderboardOptIn, leaderboardUserId, profile.displayName, effectiveTotalLearned, effectiveTotalMastered, effectiveVocabSize, effectiveStreak, points]);
 
   const prevOptIn = useRef(profile.leaderboardOptIn);
   useEffect(() => {
@@ -1178,7 +1214,7 @@ function App({ onLogout }) {
               <Sandbox {...{ words: activeList.words, apiKey, model, provider, setStats, registerActivity, promptKey: () => setShowKeyModal(true) }} />
             )}
             {view === "leaderboard" && (
-              <LeaderboardView {...{ profile, setProfile, uiLang, setVocabTestResult, onCreateList: createPersonalizedList, leaderboardUserId, liveStats: { totalLearned: totalIntroduced, totalMastered, vocabSize: effectiveVocabSize, streak: streak.count, points } }} />
+              <LeaderboardView {...{ profile, setProfile, uiLang, setVocabTestResult, onCreateList: createPersonalizedList, leaderboardUserId, liveStats: { totalLearned: effectiveTotalLearned, totalMastered: effectiveTotalMastered, vocabSize: effectiveVocabSize, streak: effectiveStreak, points } }} />
             )}
             {view === "settings" && (
               <SettingsView {...{ apiKey, setApiKey, model, setModel, provider, setProvider, providerKeys, providerModels, theme, setTheme, onLogout, profile, setProfile, uiLang, setUiLang, sessionInfo, refreshSessionInfo, leaderboardUserId }} />
@@ -1412,24 +1448,203 @@ async function adminRequest(path, method, body) {
   return data;
 }
 
+const ADMIN_OVERRIDE_FIELDS = [
+  { id: "vocabSize", label: "词汇量" },
+  { id: "streak", label: "Streak" },
+  { id: "wordsLearned", label: "Words learned" },
+  { id: "wordsMastered", label: "Words mastered" },
+];
+
+function AdminUserRow({ u, query, loadUsers, setMessage }) {
+  const [expanded, setExpanded] = useState(false);
+  const [amount, setAmount] = useState("");
+  const [usernameDraft, setUsernameDraft] = useState(u.username);
+  const [overrideDrafts, setOverrideDrafts] = useState({
+    vocabSize: u.vocabSizeOverride ?? "", streak: u.streakOverride ?? "",
+    wordsLearned: u.wordsLearnedOverride ?? "", wordsMastered: u.wordsMasteredOverride ?? "",
+  });
+
+  const grantPoints = () => {
+    const amt = Number(amount);
+    if (!amt) return;
+    setMessage(null);
+    adminRequest("/admin/grant-points", "POST", { identifier: u.email, amount: amt })
+      .then((d) => { setMessage(`Granted ${amt > 0 ? "+" : ""}${amt} pts to ${d.username} — new bonus total: ${d.bonusPoints.toLocaleString()}.`); setAmount(""); loadUsers(query); })
+      .catch((e) => setMessage(e.message));
+  };
+
+  const setUsername = () => {
+    setMessage(null);
+    adminRequest("/admin/set-username", "POST", { identifier: u.email, newUsername: usernameDraft.trim() })
+      .then((d) => { setMessage(`Renamed to ${d.username}.`); loadUsers(query); })
+      .catch((e) => setMessage(e.message));
+  };
+
+  const setOverride = (field) => {
+    const raw = overrideDrafts[field];
+    const value = raw === "" ? null : Number(raw);
+    setMessage(null);
+    adminRequest("/admin/set-override", "POST", { identifier: u.email, field, value })
+      .then((d) => { setMessage(value === null ? `Cleared ${field} override for ${d.username}.` : `Set ${field} to ${d.value.toLocaleString()} for ${d.username}.`); loadUsers(query); })
+      .catch((e) => setMessage(e.message));
+  };
+
+  const toggleBanned = () => {
+    setMessage(null);
+    adminRequest("/admin/set-banned", "POST", { identifier: u.email, banned: !u.banned })
+      .then((d) => { setMessage(d.banned ? `Suspended ${d.username}.` : `Restored ${d.username}.`); loadUsers(query); })
+      .catch((e) => setMessage(e.message));
+  };
+
+  const forceReset = () => {
+    setMessage(null);
+    adminRequest("/admin/force-reset", "POST", { identifier: u.email })
+      .then(() => setMessage(`Sent a password reset code to ${u.email}.`))
+      .catch((e) => setMessage(e.message));
+  };
+
+  const verifyUser = () => {
+    adminRequest("/admin/verify-user", "POST", { email: u.email }).then(() => loadUsers(query)).catch((e) => setMessage(e.message));
+  };
+
+  const deleteUser = () => {
+    if (!window.confirm(`Permanently delete the account ${u.email}? This can't be undone.`)) return;
+    adminRequest("/admin/delete-user", "POST", { email: u.email }).then(() => loadUsers(query)).catch((e) => setMessage(e.message));
+  };
+
+  const activeOverrides = ADMIN_OVERRIDE_FIELDS.filter((f) => u[`${f.id}Override`] != null);
+
+  return (
+    <div className={`px-3 py-3 rounded-lg ring-1 ${u.banned ? "ring-rose-500/40 bg-rose-500/5" : "ring-[color:var(--border)]"}`}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <button onClick={() => setExpanded((e) => !e)} className="flex-1 min-w-[160px] text-left">
+          <p className="text-sm font-medium text-[color:var(--text)] truncate">
+            {u.username}
+            {!u.verified && <span className="ml-1.5 text-[10px] uppercase tracking-wide text-amber-500">unverified</span>}
+            {u.banned && <span className="ml-1.5 text-[10px] uppercase tracking-wide text-rose-500">suspended</span>}
+            {u.email === ADMIN_EMAIL && <span className="ml-1.5 text-[10px] uppercase tracking-wide text-rose-500">admin</span>}
+          </p>
+          <p className="text-xs text-[color:var(--text-faint)] truncate">
+            {u.email} · bonus {u.bonusPoints.toLocaleString()} pts
+            {activeOverrides.length > 0 && ` · ${activeOverrides.map((f) => `${f.label} ${u[`${f.id}Override`].toLocaleString()}`).join(", ")}`}
+          </p>
+        </button>
+        <ChevronRight size={14} className={`text-[color:var(--text-faint)] transition-transform shrink-0 ${expanded ? "rotate-90" : ""}`} />
+      </div>
+
+      {expanded && (
+        <div className="mt-3 pt-3 border-t border-[color:var(--border)] space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            {!u.verified && <button onClick={verifyUser} className="px-2.5 py-1.5 rounded-lg ring-1 ring-[color:var(--border)] text-xs text-[color:var(--text-dim)] hover:text-[color:var(--text)] transition">Verify</button>}
+            <button onClick={forceReset} className="px-2.5 py-1.5 rounded-lg ring-1 ring-[color:var(--border)] text-xs text-[color:var(--text-dim)] hover:text-[color:var(--text)] transition">Send reset code</button>
+            {u.email !== ADMIN_EMAIL && (
+              <button onClick={toggleBanned} className={`px-2.5 py-1.5 rounded-lg ring-1 text-xs transition ${u.banned ? "ring-accent-500/40 text-accent-600 dark:text-accent-300 hover:bg-accent-500/10" : "ring-amber-500/30 text-amber-600 dark:text-amber-300 hover:bg-amber-500/10"}`}>
+                {u.banned ? "Restore" : "Suspend"}
+              </button>
+            )}
+            {u.email !== ADMIN_EMAIL && <button onClick={deleteUser} className="px-2.5 py-1.5 rounded-lg ring-1 ring-rose-500/30 text-xs text-rose-500 hover:bg-rose-500/10 transition">Delete account</button>}
+          </div>
+
+          <div className="flex items-center gap-1">
+            <input type="number" placeholder="±pts" value={amount} onChange={(e) => setAmount(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && grantPoints()}
+              className="w-20 bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-2 py-1.5 text-xs text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
+            <button onClick={grantPoints} className="px-2.5 py-1.5 rounded-lg bg-accent-500 text-[#0a0e14] text-xs font-medium hover:bg-accent-400 transition">Grant points</button>
+            <span className="text-[11px] text-[color:var(--text-faint)] ml-1">bonus pool, adds/subtracts</span>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <input value={usernameDraft} onChange={(e) => setUsernameDraft(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && setUsername()} placeholder="username"
+              className="w-32 bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-2 py-1.5 text-xs text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
+            <button onClick={setUsername} className="px-2.5 py-1.5 rounded-lg ring-1 ring-[color:var(--border)] text-xs text-[color:var(--text-dim)] hover:text-[color:var(--text)] transition">Rename</button>
+            <span className="text-[11px] text-[color:var(--text-faint)] ml-1">bypasses cooldown & filter</span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            {ADMIN_OVERRIDE_FIELDS.map((f) => (
+              <div key={f.id} className="flex items-center gap-1">
+                <input type="number" placeholder={f.label} value={overrideDrafts[f.id]}
+                  onChange={(e) => setOverrideDrafts((d) => ({ ...d, [f.id]: e.target.value }))}
+                  onKeyDown={(e) => e.key === "Enter" && setOverride(f.id)}
+                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-2 py-1.5 text-xs text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
+                <button onClick={() => setOverride(f.id)} className="shrink-0 px-2.5 py-1.5 rounded-lg ring-1 ring-[color:var(--border)] text-xs text-[color:var(--text-dim)] hover:text-[color:var(--text)] transition">Set</button>
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-[color:var(--text-faint)]">Overrides replace what's shown on the leaderboard/dashboard for that stat. Leave blank + Set to clear one.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AdminLeaderboardTab({ setMessage }) {
+  const [cat, setCat] = useState("points");
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = () => {
+    setLoading(true);
+    fetch(`${LEADERBOARD_BASE}/leaderboard?category=${cat}&limit=100`)
+      .then((r) => r.json())
+      .then((d) => setEntries(d.entries || []))
+      .catch(() => setMessage("Couldn't load the leaderboard."))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, [cat]);
+
+  const removeEntry = (id, name) => {
+    if (!window.confirm(`Remove ${name}'s leaderboard entry? They can rejoin later, but their spot resets.`)) return;
+    fetch(`${LEADERBOARD_BASE}/leaderboard/remove`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: id }),
+    }).then(() => load()).catch(() => setMessage("Couldn't remove that entry."));
+  };
+
+  return (
+    <section className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-6">
+      <div className="flex gap-2 mb-4 overflow-x-auto -mx-1 px-1 py-1">
+        {LEADERBOARD_CATEGORIES.map((c) => (
+          <button key={c.id} onClick={() => setCat(c.id)}
+            className={`shrink-0 px-3 py-1.5 rounded-lg ring-1 text-xs font-medium transition ${
+              cat === c.id ? "bg-accent-500/15 ring-accent-400/40 text-[color:var(--accent-text)]" : "ring-[color:var(--border)] text-[color:var(--text-dim)] hover:text-[color:var(--text)]"}`}>
+            {c.label}
+          </button>
+        ))}
+      </div>
+      {loading ? (
+        <div className="p-8 flex justify-center"><Loader2 size={20} className="animate-spin text-[color:var(--text-faint)]" /></div>
+      ) : entries.length === 0 ? (
+        <p className="text-center text-sm text-[color:var(--text-faint)] py-6">No entries in this category.</p>
+      ) : (
+        <div className="space-y-2">
+          {entries.map((e, i) => (
+            <div key={e.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg ring-1 ring-[color:var(--border)]">
+              <span className="w-6 text-xs text-[color:var(--text-faint)] text-center shrink-0">{i + 1}</span>
+              <span className="flex-1 text-sm text-[color:var(--text)] truncate">{e.displayName}</span>
+              <span className="text-sm font-mono text-[color:var(--text-dim)]">{e.value.toLocaleString()}</span>
+              <button onClick={() => removeEntry(e.id, e.displayName)} className="px-2.5 py-1 rounded-lg ring-1 ring-rose-500/30 text-xs text-rose-500 hover:bg-rose-500/10 transition">Remove</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function AdminPanel({ onExit }) {
+  const [tab, setTab] = useState("users");
   const [stats, setStats] = useState(null);
   const [query, setQuery] = useState("");
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
-  const [amounts, setAmounts] = useState({});
-  const [usernameDrafts, setUsernameDrafts] = useState({});
-  const [vocabDrafts, setVocabDrafts] = useState({});
 
   const loadUsers = (q) => {
     setLoading(true);
     adminRequest(`/admin/users?q=${encodeURIComponent(q || "")}`, "GET")
-      .then((d) => {
-        setUsers(d.users || []);
-        setUsernameDrafts(Object.fromEntries((d.users || []).map((u) => [u.email, u.username])));
-        setVocabDrafts(Object.fromEntries((d.users || []).map((u) => [u.email, u.vocabSizeOverride ?? ""])));
-      })
+      .then((d) => setUsers(d.users || []))
       .catch((e) => setMessage(e.message))
       .finally(() => setLoading(false));
   };
@@ -1438,41 +1653,6 @@ function AdminPanel({ onExit }) {
     adminRequest("/admin/stats", "GET").then(setStats).catch(() => {});
     loadUsers("");
   }, []);
-
-  const grantPoints = (email) => {
-    const amount = Number(amounts[email]);
-    if (!amount) return;
-    setMessage(null);
-    adminRequest("/admin/grant-points", "POST", { identifier: email, amount })
-      .then((d) => { setMessage(`Granted ${amount > 0 ? "+" : ""}${amount} pts to ${d.username} — new bonus total: ${d.bonusPoints}.`); setAmounts((a) => ({ ...a, [email]: "" })); loadUsers(query); })
-      .catch((e) => setMessage(e.message));
-  };
-
-  const setUsername = (email) => {
-    const newUsername = (usernameDrafts[email] || "").trim();
-    setMessage(null);
-    adminRequest("/admin/set-username", "POST", { identifier: email, newUsername })
-      .then((d) => { setMessage(`Renamed to ${d.username}.`); loadUsers(query); })
-      .catch((e) => setMessage(e.message));
-  };
-
-  const setVocabSize = (email) => {
-    const raw = vocabDrafts[email];
-    const vocabSize = raw === "" || raw === null || raw === undefined ? null : Number(raw);
-    setMessage(null);
-    adminRequest("/admin/set-vocab-size", "POST", { identifier: email, vocabSize })
-      .then((d) => { setMessage(vocabSize === null ? `Cleared 词汇量 override for ${d.username}.` : `Set 词汇量 to ${d.vocabSizeOverride} for ${d.username}.`); loadUsers(query); })
-      .catch((e) => setMessage(e.message));
-  };
-
-  const verifyUser = (email) => {
-    adminRequest("/admin/verify-user", "POST", { email }).then(() => loadUsers(query)).catch((e) => setMessage(e.message));
-  };
-
-  const deleteUser = (email) => {
-    if (!window.confirm(`Permanently delete the account ${email}? This can't be undone.`)) return;
-    adminRequest("/admin/delete-user", "POST", { email }).then(() => loadUsers(query)).catch((e) => setMessage(e.message));
-  };
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-8 py-6 sm:py-10">
@@ -1510,61 +1690,41 @@ function AdminPanel({ onExit }) {
         </div>
       )}
 
-      <section className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && loadUsers(query)}
-            placeholder="Search by username or email"
-            className="flex-1 bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
-          <button onClick={() => loadUsers(query)} className="px-4 py-2 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-medium hover:bg-accent-400 transition">Search</button>
-        </div>
+      <div className="flex rounded-lg bg-[color:var(--surface2)] p-1 mb-4 max-w-xs">
+        <button onClick={() => setTab("users")}
+          className={`flex-1 py-1.5 rounded-md text-sm font-medium transition ${tab === "users" ? "bg-[color:var(--surface)] text-[color:var(--text)] shadow-sm" : "text-[color:var(--text-faint)]"}`}>
+          Users
+        </button>
+        <button onClick={() => setTab("leaderboard")}
+          className={`flex-1 py-1.5 rounded-md text-sm font-medium transition ${tab === "leaderboard" ? "bg-[color:var(--surface)] text-[color:var(--text)] shadow-sm" : "text-[color:var(--text-faint)]"}`}>
+          Leaderboard
+        </button>
+      </div>
 
-        {loading ? (
-          <div className="p-8 flex justify-center"><Loader2 size={20} className="animate-spin text-[color:var(--text-faint)]" /></div>
-        ) : users.length === 0 ? (
-          <p className="text-center text-sm text-[color:var(--text-faint)] py-6">No users found.</p>
-        ) : (
-          <div className="space-y-3">
-            {users.map((u) => (
-              <div key={u.email} className="px-3 py-3 rounded-lg ring-1 ring-[color:var(--border)]">
-                <div className="flex items-center gap-2 flex-wrap mb-2.5">
-                  <div className="flex-1 min-w-[160px]">
-                    <p className="text-sm font-medium text-[color:var(--text)] truncate">
-                      {u.username}{!u.verified && <span className="ml-1.5 text-[10px] uppercase tracking-wide text-amber-500">unverified</span>}
-                      {u.email === ADMIN_EMAIL && <span className="ml-1.5 text-[10px] uppercase tracking-wide text-rose-500">admin</span>}
-                    </p>
-                    <p className="text-xs text-[color:var(--text-faint)] truncate">
-                      {u.email} · bonus {u.bonusPoints.toLocaleString()} pts{u.vocabSizeOverride != null && ` · 词汇量 override ${u.vocabSizeOverride.toLocaleString()}`}
-                    </p>
-                  </div>
-                  {!u.verified && <button onClick={() => verifyUser(u.email)} className="px-2.5 py-1.5 rounded-lg ring-1 ring-[color:var(--border)] text-xs text-[color:var(--text-dim)] hover:text-[color:var(--text)] transition">Verify</button>}
-                  {u.email !== ADMIN_EMAIL && <button onClick={() => deleteUser(u.email)} className="px-2.5 py-1.5 rounded-lg ring-1 ring-rose-500/30 text-xs text-rose-500 hover:bg-rose-500/10 transition">Delete</button>}
-                </div>
-
-                <div className="flex items-center gap-2 flex-wrap">
-                  <div className="flex items-center gap-1">
-                    <input type="number" placeholder="±pts" value={amounts[u.email] || ""} onChange={(e) => setAmounts((a) => ({ ...a, [u.email]: e.target.value }))}
-                      onKeyDown={(e) => e.key === "Enter" && grantPoints(u.email)}
-                      className="w-20 bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-2 py-1.5 text-xs text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
-                    <button onClick={() => grantPoints(u.email)} className="px-2.5 py-1.5 rounded-lg bg-accent-500 text-[#0a0e14] text-xs font-medium hover:bg-accent-400 transition">Grant</button>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <input value={usernameDrafts[u.email] ?? ""} onChange={(e) => setUsernameDrafts((d) => ({ ...d, [u.email]: e.target.value }))}
-                      onKeyDown={(e) => e.key === "Enter" && setUsername(u.email)} placeholder="username"
-                      className="w-28 bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-2 py-1.5 text-xs text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
-                    <button onClick={() => setUsername(u.email)} className="px-2.5 py-1.5 rounded-lg ring-1 ring-[color:var(--border)] text-xs text-[color:var(--text-dim)] hover:text-[color:var(--text)] transition">Rename</button>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <input type="number" placeholder="词汇量" value={vocabDrafts[u.email] ?? ""} onChange={(e) => setVocabDrafts((d) => ({ ...d, [u.email]: e.target.value }))}
-                      onKeyDown={(e) => e.key === "Enter" && setVocabSize(u.email)}
-                      className="w-24 bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-2 py-1.5 text-xs text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
-                    <button onClick={() => setVocabSize(u.email)} className="px-2.5 py-1.5 rounded-lg ring-1 ring-[color:var(--border)] text-xs text-[color:var(--text-dim)] hover:text-[color:var(--text)] transition">Set</button>
-                  </div>
-                </div>
-              </div>
-            ))}
+      {tab === "leaderboard" ? (
+        <AdminLeaderboardTab setMessage={setMessage} />
+      ) : (
+        <section className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <input value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && loadUsers(query)}
+              placeholder="Search by username or email"
+              className="flex-1 bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
+            <button onClick={() => loadUsers(query)} className="px-4 py-2 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-medium hover:bg-accent-400 transition">Search</button>
           </div>
-        )}
-      </section>
+
+          {loading ? (
+            <div className="p-8 flex justify-center"><Loader2 size={20} className="animate-spin text-[color:var(--text-faint)]" /></div>
+          ) : users.length === 0 ? (
+            <p className="text-center text-sm text-[color:var(--text-faint)] py-6">No users found.</p>
+          ) : (
+            <div className="space-y-3">
+              {users.map((u) => (
+                <AdminUserRow key={u.email} u={u} query={query} loadUsers={loadUsers} setMessage={setMessage} />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }
@@ -3295,6 +3455,7 @@ function Deck({ list, lists, activeListId, setActiveListId, updateList, onOpen, 
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2.5 mb-1">
                 <span className="text-base font-semibold text-[color:var(--text)]">{w.word}</span>
+                <AudioPronunciationButton word={w.word} size={13} />
                 <span className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full ${vibeColor(w.vibe)}`}>{w.vibe}</span>
                 <span className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-[color:var(--surface2)] text-[color:var(--text-faint)]">{boxLabel(w)}</span>
               </div>
@@ -3642,6 +3803,13 @@ function MemorizeSession({ list, pool, updateList, setStats, registerActivity, o
     if (!cur.memStarted) return rating === "know" ? 100 : rating === "blurry" ? 20 : 0;
     return rating === "know" ? Math.min(100, cur.memRate + 20) : rating === "blurry" ? Math.min(100, cur.memRate + 10) : cur.memRate;
   };
+  // Mirrors the exact scheduling finishSession() applies on mastery, so the
+  // "I remember it" button can preview the real next-review date instead of
+  // just the memorized percentage — same box-bump, same LEITNER_DAYS lookup.
+  const nextReviewDays = (() => {
+    const boxBump = Math.min(6, (word.box || 0) + 1);
+    return LEITNER_DAYS[Math.min(boxBump, LEITNER_DAYS.length - 1)];
+  })();
   const highlightWord = (sentence) => {
     const re = new RegExp(`(${word.word})`, "i");
     const parts = sentence.split(re);
@@ -3666,7 +3834,10 @@ function MemorizeSession({ list, pool, updateList, setStats, registerActivity, o
             <span className="text-2xl">{VIBE_EMOJI[word.vibe] || "✨"}</span>
             <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-black/10 dark:bg-white/10 text-[color:var(--text)]">{cur.memRate}% memorized</span>
           </div>
-          <h3 className="text-4xl sm:text-5xl font-bold text-[color:var(--text)] tracking-tight">{word.word}</h3>
+          <h3 className="text-4xl sm:text-5xl font-bold text-[color:var(--text)] tracking-tight inline-flex items-center gap-2">
+            {word.word}
+            <AudioPronunciationButton word={word.word} size={20} />
+          </h3>
           <p className="text-xs uppercase tracking-widest text-[color:var(--text-faint)] mt-1">{word.vibe}</p>
         </div>
 
@@ -3679,23 +3850,48 @@ function MemorizeSession({ list, pool, updateList, setStats, registerActivity, o
               </button>
             </div>
           ) : (
-            <div className="text-left w-full space-y-4">
-              <p className="text-base text-[color:var(--text)] leading-relaxed">{word.def}</p>
+            <div className="text-left w-full space-y-5">
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-[color:var(--text-faint)] mb-1.5">Definition</p>
+                <p className="text-base text-[color:var(--text)] leading-relaxed">{word.def}</p>
+              </div>
+
               {examples.length > 0 && (
                 <div>
-                  <p className="text-[10px] uppercase tracking-wide text-[color:var(--text-faint)] mb-1.5">Example</p>
-                  <div className="space-y-1.5">
-                    {examples.slice(0, 2).map((s, i) => (
-                      <p key={i} className="text-sm text-[color:var(--text-dim)] italic leading-relaxed">{highlightWord(s)}</p>
+                  <p className="text-[10px] uppercase tracking-wide text-[color:var(--text-faint)] mb-1.5">例句 · Examples</p>
+                  <div className="space-y-2">
+                    {examples.slice(0, 3).map((s, i) => (
+                      <div key={i} className="flex items-start gap-1.5">
+                        <p className="flex-1 text-sm text-[color:var(--text-dim)] italic leading-relaxed">{highlightWord(s)}</p>
+                        <AudioPronunciationButton word={s} size={12} className="shrink-0 mt-0.5" />
+                      </div>
                     ))}
                   </div>
                 </div>
               )}
+
               {coll.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {coll.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-accent-500/15 text-[color:var(--accent-text)] ring-1 ring-accent-500/30">{c}</span>)}
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-[color:var(--text-faint)] mb-1.5">助记 · Related phrases</p>
+                  <div className="flex flex-wrap gap-2">
+                    {coll.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-accent-500/15 text-[color:var(--accent-text)] ring-1 ring-accent-500/30">{c}</span>)}
+                  </div>
                 </div>
               )}
+
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-[color:var(--text-faint)] mb-1.5">记忆历史 · Memory history</p>
+                <div className="flex items-center gap-4 text-xs text-[color:var(--text-dim)]">
+                  <span className="flex items-center gap-1"><Check size={12} className="text-accent-500" /> {word.correctCount || 0} correct</span>
+                  <span className="flex items-center gap-1"><X size={12} className="text-rose-500" /> {word.wrongCount || 0} missed</span>
+                  <span>Box {word.box || 0}/6</span>
+                </div>
+                <div className="flex gap-1 mt-2">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <span key={i} className={`h-1.5 flex-1 rounded-full ${i < (word.box || 0) ? "bg-accent-500" : "bg-[color:var(--surface2)]"}`} />
+                  ))}
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -3719,7 +3915,9 @@ function MemorizeSession({ list, pool, updateList, setStats, registerActivity, o
               <button onClick={() => rate("know")}
                 className="flex-1 py-2.5 rounded-lg text-sm font-medium ring-1 bg-accent-500/10 text-accent-700 dark:text-accent-300 ring-accent-500/30 hover:bg-accent-500/15 transition">
                 <span className="block">I remember it</span>
-                <span className="block text-[10px] opacity-70 mt-0.5">{previewRate("know") >= 100 ? "mastered!" : `→ ${previewRate("know")}%`}</span>
+                <span className="block text-[10px] opacity-70 mt-0.5">
+                  {previewRate("know") >= 100 ? `mastered! next review in ${nextReviewDays}d` : `→ ${previewRate("know")}%`}
+                </span>
               </button>
             </div>
           </div>
@@ -3732,6 +3930,7 @@ function MemorizeSession({ list, pool, updateList, setStats, registerActivity, o
 const LEARN_MODES = [
   { id: "quick", label: "Quick Preview", desc: "Skim new words fast with rotating card styles." },
   { id: "deep", label: "Deep Memorize", desc: "Self-rate each word until it's fully memorized." },
+  { id: "yesterday", label: "Review Yesterday", desc: "Go back over everything you learned yesterday." },
 ];
 
 function LearnView({ list, updateList, setStats, registerActivity, onOpenDetail, setView }) {
@@ -3748,6 +3947,7 @@ function LearnView({ list, updateList, setStats, registerActivity, onOpenDetail,
 
   const pending = useMemo(() => getLearnPool(list), [list]);
   const memPending = useMemo(() => getMemorizePool(list), [list]);
+  const yesterdayPending = useMemo(() => getYesterdayPool(list), [list]);
   const styles = enabledStyles.length ? enabledStyles : ["reveal"];
 
   const toggleStyle = (id) => {
@@ -3764,6 +3964,12 @@ function LearnView({ list, updateList, setStats, registerActivity, onOpenDetail,
     if (mode === "deep") {
       if (!memPending.length) return;
       setMemPool(memPending);
+      setPhase("deep");
+      return;
+    }
+    if (mode === "yesterday") {
+      if (!yesterdayPending.length) return;
+      setMemPool(yesterdayPending);
       setPhase("deep");
       return;
     }
@@ -3806,14 +4012,14 @@ function LearnView({ list, updateList, setStats, registerActivity, onOpenDetail,
   }
 
   if (phase === "home") {
-    const activePending = mode === "deep" ? memPending : pending;
+    const activePending = mode === "deep" ? memPending : mode === "yesterday" ? yesterdayPending : pending;
     return (
       <div className="max-w-2xl mx-auto px-4 sm:px-8 py-10 sm:py-16 text-center">
         <GraduationCap size={36} className="mx-auto text-[color:var(--accent-text)] mb-4" />
         <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)] mb-1">学 · Learn</p>
         <h2 className="text-2xl font-semibold text-[color:var(--text)] mb-3">Ready to meet today's words?</h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
           {LEARN_MODES.map((m) => (
             <button key={m.id} onClick={() => setMode(m.id)}
               className={`text-left rounded-xl ring-1 p-4 transition ${
@@ -3828,10 +4034,14 @@ function LearnView({ list, updateList, setStats, registerActivity, onOpenDetail,
           {activePending.length
             ? mode === "deep"
               ? `${activePending.length} word${activePending.length === 1 ? "" : "s"} from "${list.name}" aren't fully memorized yet.`
-              : `${activePending.length} new word${activePending.length === 1 ? "" : "s"} from "${list.name}". Pick how you want to see them below.`
+              : mode === "yesterday"
+                ? `${activePending.length} word${activePending.length === 1 ? "" : "s"} you learned yesterday, ready for a review pass.`
+                : `${activePending.length} new word${activePending.length === 1 ? "" : "s"} from "${list.name}". Pick how you want to see them below.`
             : mode === "deep"
               ? "Everything in this list is already memorized. Add more words, or check Quick Test for spaced review."
-              : "No new words waiting right now. Add more to this list, or head to Quick Test to review what you've already learned."}
+              : mode === "yesterday"
+                ? "You didn't learn any new words yesterday, so there's nothing to review here."
+                : "No new words waiting right now. Add more to this list, or head to Quick Test to review what you've already learned."}
         </p>
 
         {mode === "quick" && (
@@ -4172,7 +4382,7 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity, onOp
           {question.type === "word2def" && (
             <>
               <p className="text-xs uppercase tracking-wide text-[color:var(--text-faint)] mt-3 mb-2">What does this word mean?</p>
-              <h3 className="text-3xl font-bold text-[color:var(--text)] mb-6">{current.word}</h3>
+              <h3 className="text-3xl font-bold text-[color:var(--text)] mb-6 inline-flex items-center gap-2">{current.word}<AudioPronunciationButton word={current.word} size={16} /></h3>
               <div className="space-y-2">
                 {question.choices.map((c, i) => (
                   <ChoiceButton key={i} label={c} selected={chosen === c} feedback={feedback} isAnswer={c === question.answer}
@@ -4711,7 +4921,7 @@ function Root() {
     if (!token) return;
     let cancelled = false;
     fetch(`${AUTH_BASE}/auth/session`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => { if (!cancelled && (r.status === 401 || r.status === 404)) doLogout(); })
+      .then((r) => { if (!cancelled && (r.status === 401 || r.status === 403 || r.status === 404)) doLogout(); })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [authed]);
