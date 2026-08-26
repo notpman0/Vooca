@@ -1,6 +1,6 @@
 {
-  "name": "Vocab Master",
-  "short_name": "Vocab Master",
+  "name": "Vooca",
+  "short_name": "Vooca",
   "description": "Learn it. Own it.",
   "start_url": "./index.html",
   "display": "standalone",

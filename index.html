@@ -6,14 +6,14 @@
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Vocab Master</title>
+<title>Vooca</title>
 <meta name="description" content="Learn it. Own it. — vocabulary learning with spaced repetition and AI." />
 <link rel="manifest" href="manifest.json" />
 <meta name="theme-color" content="#0d1117" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="Vocab Master" />
+<meta name="apple-mobile-web-app-title" content="Vooca" />
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
 <link rel="icon" type="image/png" sizes="192x192" href="assets/icon-192.png" />
 <link rel="icon" type="image/png" sizes="512x512" href="assets/icon-512.png" />
@@ -414,19 +414,13 @@ function repairListIds(lists) {
   }));
 }
 
-const buildExamples = (word) => {
-  if (word.examples && word.examples.length) return word.examples;
-  // Fallback only — used until a real example has been fetched (or if none
-  // could be found for this word at all).
-  const coll = (word.coll || "").split(",").map((c) => c.trim()).filter(Boolean);
-  const w = word.word.toLowerCase();
-  const out = [
-    `As the report noted, the ${w} approach proved essential${coll[0] ? ` — a ${word.vibe} choice that paired naturally with "${coll[0]}."` : "."}`,
-    coll[1] ? `Critics praised the ${coll[1]}, calling it a masterclass in ${w} thinking.` : `Few people used the word "${word.word}" as precisely as she did.`,
-    coll[2] ? `Nobody expected the ${coll[2]} to shift so fast, yet it stayed remarkably ${w}.` : `It takes practice to sound natural using "${word.word}" in conversation.`,
-  ];
-  return out;
-};
+// Only ever returns real, fetched examples (dictionaryapi.dev, or AI-written
+// ones for words that source has no entry for) — never a fabricated
+// templated sentence. `word.examples` is `undefined` before the backfill
+// pass has run for this word yet, and `[]` once it's run and genuinely found
+// nothing; callers should treat both as "no example to show" and render
+// accordingly rather than inventing one.
+const buildExamples = (word) => (word.examples && word.examples.length) ? word.examples : [];
 
 // US/UK pronunciation. Browser voice availability varies a lot by OS — the
 // fallback chain always finds *some* English voice, but which accent you
@@ -744,7 +738,7 @@ function AuthGate({ onAuth }) {
           <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 flex items-center justify-center shadow-sm shadow-violet-500/30 mb-3">
             <BrandMark size={24} className="text-white" />
           </div>
-          <h1 className="text-lg font-semibold text-[color:var(--text)]">Vocab Master</h1>
+          <h1 className="text-lg font-semibold text-[color:var(--text)]">Vooca</h1>
           <p className="text-xs text-[color:var(--text-dim)] mt-0.5">Learn it. Own it.</p>
         </div>
 
@@ -1004,11 +998,11 @@ function App({ onLogout }) {
   // visible reward signal (Dashboard + leaderboard), nothing is spent yet.
   const points = effectiveTotalLearned * 2 + effectiveTotalMastered * 5 + stats.sessions * 10 + effectiveStreak + sessionInfo.bonusPoints;
 
-  // Backfills real example sentences (dictionaryapi.dev) for words in the
-  // active list that don't have any yet, in small batches, so seed/imported/
-  // manually-added words all eventually get real examples instead of the
-  // synthesized fallback in buildExamples(). `examples: []` marks "looked,
-  // found nothing" so a word without a real example isn't retried forever.
+  // Backfills real example sentences (dictionaryapi.dev, with an AI fallback
+  // when a key is set) for words in the active list that don't have any yet.
+  // `examples: []` marks "looked, found nothing" so a word without a real
+  // example isn't retried forever — buildExamples() shows an honest "no
+  // example found" state for those rather than a fabricated sentence.
   const missingExamplesCount = useMemo(
     () => activeList ? activeList.words.filter((w) => w.def && w.examples === undefined).length : 0,
     [activeList]
@@ -1037,6 +1031,31 @@ function App({ onLogout }) {
     })();
     return () => { cancelled = true; };
   }, [activeList?.id, missingExamplesCount]);
+
+  // Same backfill pattern, but for a Chinese translation of each word's
+  // definition — only bothers fetching when the app is actually in Chinese
+  // mode, since English-mode users never need it.
+  const missingChineseCount = useMemo(
+    () => (uiLang === "zh" && activeList) ? activeList.words.filter((w) => w.def && w.chinese === undefined).length : 0,
+    [activeList, uiLang]
+  );
+  useEffect(() => {
+    if (uiLang !== "zh" || !activeList || !missingChineseCount) return;
+    const candidates = activeList.words.filter((w) => w.def && w.chinese === undefined).slice(0, 40);
+    let cancelled = false;
+    (async () => {
+      const results = await fetchChineseBatch(candidates.map((w) => w.word));
+      if (cancelled) return;
+      updateList(activeList.id, (l) => ({
+        ...l,
+        words: l.words.map((w) => {
+          if (!candidates.some((c) => c.id === w.id)) return w;
+          return { ...w, chinese: results[w.word.trim().toLowerCase()] || null };
+        }),
+      }));
+    })();
+    return () => { cancelled = true; };
+  }, [activeList?.id, missingChineseCount, uiLang]);
 
   useEffect(() => {
     if (!profile.leaderboardOptIn) return;
@@ -1121,7 +1140,7 @@ function App({ onLogout }) {
           <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 flex items-center justify-center shadow-sm shadow-violet-500/30">
             <BrandMark size={15} className="text-white" />
           </div>
-          <h1 className="text-sm font-semibold text-[color:var(--text)]">Vocab Master</h1>
+          <h1 className="text-sm font-semibold text-[color:var(--text)]">Vooca</h1>
         </div>
         <button onClick={() => setMobileNavOpen(true)} className="p-2 -mr-2 text-[color:var(--text-dim)]">
           <Menu size={20} />
@@ -1140,7 +1159,7 @@ function App({ onLogout }) {
               <BrandMark size={18} className="text-white" />
             </div>
             <div>
-              <h1 className="text-sm font-semibold tracking-tight text-[color:var(--text)] leading-tight">Vocab Master</h1>
+              <h1 className="text-sm font-semibold tracking-tight text-[color:var(--text)] leading-tight">Vooca</h1>
               <p className="text-[11px] text-[color:var(--text-dim)] tracking-wide">Learn it. Own it.</p>
             </div>
           </div>
@@ -1185,7 +1204,7 @@ function App({ onLogout }) {
       <main className="flex-1 overflow-y-auto h-screen pt-14 md:pt-0 min-w-0">
         {detailWord ? (
           <div key="detail" className="animate-fade-up">
-            <WordDetailPage listId={detailWord.listId} wordId={detailWord.wordId} lists={lists} onBack={() => setDetailWord(null)} />
+            <WordDetailPage listId={detailWord.listId} wordId={detailWord.wordId} lists={lists} onBack={() => setDetailWord(null)} uiLang={uiLang} />
           </div>
         ) : (
           <div key={view} className="animate-fade-up">
@@ -1197,21 +1216,21 @@ function App({ onLogout }) {
             )}
             {view === "deck" && activeList && (
               <Deck list={activeList} lists={lists} setActiveListId={setActiveListId} activeListId={activeListId}
-                updateList={updateList} onOpen={(w) => openDetail(activeList.id, w.id)} apiKey={apiKey} model={model} provider={provider} />
+                updateList={updateList} onOpen={(w) => openDetail(activeList.id, w.id)} apiKey={apiKey} model={model} provider={provider} uiLang={uiLang} />
             )}
             {view === "learn" && activeList && (
               <LearnView list={activeList} updateList={updateList} setStats={setStats} registerActivity={registerActivity}
-                onOpenDetail={openDetail} setView={setView} />
+                onOpenDetail={openDetail} setView={setView} uiLang={uiLang} />
             )}
             {view === "quiz" && activeList && (
               <QuizView list={activeList} allWords={allWords} updateList={updateList} setStats={setStats}
-                registerActivity={registerActivity} onOpenDetail={openDetail} setView={setView} />
+                registerActivity={registerActivity} onOpenDetail={openDetail} setView={setView} uiLang={uiLang} />
             )}
             {view === "search" && (
               <SearchView activeList={activeList} updateList={updateList} apiKey={apiKey} model={model} provider={provider} onOpenDetail={openDetail} />
             )}
             {view === "sandbox" && activeList && (
-              <Sandbox {...{ words: activeList.words, apiKey, model, provider, setStats, registerActivity, promptKey: () => setShowKeyModal(true) }} />
+              <Sandbox {...{ words: activeList.words.filter((w) => w.learnedOn === todayStr()), apiKey, model, provider, setStats, registerActivity, promptKey: () => setShowKeyModal(true) }} />
             )}
             {view === "leaderboard" && (
               <LeaderboardView {...{ profile, setProfile, uiLang, setVocabTestResult, onCreateList: createPersonalizedList, leaderboardUserId, liveStats: { totalLearned: effectiveTotalLearned, totalMastered: effectiveTotalMastered, vocabSize: effectiveVocabSize, streak: effectiveStreak, points } }} />
@@ -2736,6 +2755,34 @@ async function fetchAiExamplesBatch(words, apiKey, model, provider) {
   } catch { return {}; }
 }
 
+// Free, keyless English→Chinese translation for the definition shown in
+// Chinese mode. Best-effort like the examples/dictionary lookups — a miss
+// just means the English definition stays shown for that word.
+async function fetchChineseTranslation(word) {
+  try {
+    const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(word.trim())}&langpair=en|zh-CN`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const text = data?.responseData?.translatedText;
+    return text && !/^\s*$/.test(text) ? text.trim() : null;
+  } catch { return null; }
+}
+
+async function fetchChineseBatch(words) {
+  const CONCURRENCY = 4;
+  const results = {};
+  const queue = [...words];
+  const worker = async () => {
+    while (queue.length) {
+      const word = queue.shift();
+      const found = await fetchChineseTranslation(word);
+      if (found) results[word.trim().toLowerCase()] = found;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, words.length) }, worker));
+  return results;
+}
+
 async function fetchExamplesBatch(words, onProgress) {
   const CONCURRENCY = 5;
   const results = {};
@@ -2862,23 +2909,27 @@ async function extractWordsWithAI(rawText, apiKey, model, onProgress, provider =
   const chunks = [];
   for (let i = 0; i < rawText.length; i += CHUNK) chunks.push(rawText.slice(i, i + CHUNK));
   const capped = chunks.slice(0, 25);
-  const system = `You are extracting a clean vocabulary list from raw, possibly messy text (often pulled from a PDF word list). The text may mix real vocabulary words and their definitions together with noise: page numbers, headers, instructions, part-of-speech tags, example sentences, etc.
-Identify ONLY the actual vocabulary words being taught. Return ONLY valid JSON (no markdown, no preamble): an array of objects like [{"word": string, "def": string}].
-Rules:
-- "word" must be a single real English word or short fixed phrase — no numbering, no page numbers, no stray punctuation.
-- "def" is the definition if one is clearly present in the text near the word, kept to one short sentence; otherwise an empty string. Do not invent definitions that aren't in the text.
-- Skip headers, instructions, page numbers, and anything that is not itself a vocabulary entry.
-- If a chunk has no real vocabulary entries, return an empty array [].`;
-  let all = [];
+  // Plain one-word-per-line output instead of a JSON array — far more
+  // reliable across models than asking for strict JSON (a single stray
+  // comma or an unescaped quote used to sink the whole chunk). Definitions
+  // aren't extracted here anymore either; they get filled the same way
+  // every other word in the app does, via the free-dictionary + AI pipeline
+  // right after import.
+  const system = `You are filtering raw, possibly messy text pulled from a PDF word list. It mixes real vocabulary words together with noise: definitions, page numbers, headers, instructions, part-of-speech tags, example sentences, etc.
+
+Filter out everything that is not itself a vocabulary word being taught, and send back only the words — as a plain list, one word per line, nothing else. No numbering, no bullets, no definitions, no explanations, no markdown, no code fences. Just the words, one per line. If a chunk has no real vocabulary words, reply with nothing.`;
+  let allWords = [];
   let failedChunks = 0;
   let lastError = null;
   for (let i = 0; i < capped.length; i++) {
     onProgress && onProgress(i + 1, capped.length);
     if (i > 0) await sleep(providerThrottleMs(provider));
     try {
-      const raw = await callAI({ provider, apiKey, model, system, userText: `Raw text:\n"""${capped[i]}"""`, maxTokens: 4000 });
-      const parsed = extractJsonArray(raw);
-      if (Array.isArray(parsed)) all = all.concat(parsed);
+      const raw = await callAI({ provider, apiKey, model, system, userText: `Raw text:\n"""${capped[i]}"""`, maxTokens: 3000 });
+      const lines = raw.split("\n")
+        .map((l) => l.trim().replace(/^[\d]+[\.\)]\s*/, "").replace(/^[-*•]\s*/, "").replace(/[.,;:]+$/, ""))
+        .filter((l) => /^[a-zA-Z][a-zA-Z '-]{0,29}$/.test(l));
+      allWords = allWords.concat(lines);
     } catch (err) {
       failedChunks++;
       lastError = err.message;
@@ -2887,11 +2938,11 @@ Rules:
   }
   const seen = new Set();
   const deduped = [];
-  for (const w of all) {
-    const key = (w?.word || "").trim().toLowerCase();
-    if (!key || seen.has(key)) continue;
+  for (const w of allWords) {
+    const key = w.toLowerCase();
+    if (seen.has(key)) continue;
     seen.add(key);
-    deduped.push({ word: w.word.trim(), def: (w.def || "").trim() });
+    deduped.push({ word: w, def: "" });
   }
   return { words: deduped, failedChunks, totalChunks: capped.length, truncated: chunks.length > capped.length, lastError };
 }
@@ -2940,7 +2991,7 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
       const parts = line.split(/:|—|--|-{1}(?=\s)/);
       const word = (parts[0] || "").trim().replace(/[.,;]+$/, "");
       const def = parts.slice(1).join(":").trim();
-      return freshWord({ word, def: def || "", vibe: "formal", coll: "" });
+      return freshWord({ word, def: def || "", vibe: "", coll: "" });
     }).filter((w) => w.word && /^[a-zA-Z][a-zA-Z\s-]*$/.test(w.word) && w.word.length <= 30);
     if (!words.length) return;
     setPreview(words);
@@ -2960,7 +3011,7 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
           : `${PROVIDERS[provider].short} couldn't find any vocabulary words in that text — try pasting a cleaner excerpt.`);
         return false;
       }
-      const words = found.map((w) => freshWord({ word: w.word, def: w.def, vibe: "formal", coll: "" }));
+      const words = found.map((w) => freshWord({ word: w.word, def: w.def, vibe: "", coll: "" }));
       setPreview(words);
       setPlanDraft(suggestPlan(words.length));
       if (failedChunks || truncated) {
@@ -2993,7 +3044,7 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
           : `${PROVIDERS[provider].short} couldn't make out any vocabulary words in those page images — try a clearer scan or paste the words manually.`);
         return false;
       }
-      const words = found.map((w) => freshWord({ word: w.word, def: w.def, vibe: "formal", coll: "" }));
+      const words = found.map((w) => freshWord({ word: w.word, def: w.def, vibe: "", coll: "" }));
       setPreview(words);
       setPlanDraft(suggestPlan(words.length));
       if (failedBatches) {
@@ -3354,8 +3405,8 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
 }
 
 /* ---------------- Vocab Deck ---------------- */
-function Deck({ list, lists, activeListId, setActiveListId, updateList, onOpen, apiKey, model, provider }) {
-  const empty = { word: "", def: "", vibe: "formal", coll: "" };
+function Deck({ list, lists, activeListId, setActiveListId, updateList, onOpen, apiKey, model, provider, uiLang }) {
+  const empty = { word: "", def: "", vibe: "", coll: "" };
   const [form, setForm] = useState(empty);
   const [open, setOpen] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
@@ -3489,10 +3540,10 @@ function Deck({ list, lists, activeListId, setActiveListId, updateList, onOpen, 
               <div className="flex items-center gap-2.5 mb-1">
                 <span className="text-base font-semibold text-[color:var(--text)]">{w.word}</span>
                 <AudioPronunciationButton word={w.word} size={13} />
-                <span className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full ${vibeColor(w.vibe)}`}>{w.vibe}</span>
+                {w.vibe && <span className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full ${vibeColor(w.vibe)}`}>{w.vibe}</span>}
                 <span className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-[color:var(--surface2)] text-[color:var(--text-faint)]">{boxLabel(w)}</span>
               </div>
-              <p className="text-sm text-[color:var(--text-dim)] truncate">{w.def || "(no definition yet)"}</p>
+              <p className="text-sm text-[color:var(--text-dim)] truncate">{(uiLang === "zh" && w.chinese) ? w.chinese : (w.def || "(no definition yet)")}</p>
             </div>
             <button onClick={(e) => { e.stopPropagation(); remove(w.id); }}
               className="opacity-0 group-hover:opacity-100 text-[color:var(--text-faint)] hover:text-rose-500 transition p-1">
@@ -3558,9 +3609,13 @@ function Deck({ list, lists, activeListId, setActiveListId, updateList, onOpen, 
 }
 
 /* ---------------- Word Detail Page (full page) ---------------- */
-function WordDetailPage({ listId, wordId, lists, onBack }) {
+function WordDetailPage({ listId, wordId, lists, onBack, uiLang }) {
   const list = lists.find((l) => l.id === listId);
   const word = list?.words.find((w) => w.id === wordId);
+
+  useEffect(() => {
+    if (word) speakWord(word.word, "us");
+  }, [word?.id]);
 
   if (!word) {
     return (
@@ -3583,7 +3638,7 @@ function WordDetailPage({ listId, wordId, lists, onBack }) {
 
       <div className="text-center mb-10">
         <span className="text-3xl">{VIBE_EMOJI[word.vibe] || "✨"}</span>
-        <p className="text-xs uppercase tracking-widest text-[color:var(--accent-text)] mt-2">{word.vibe}</p>
+        {word.vibe && <p className="text-xs uppercase tracking-widest text-[color:var(--accent-text)] mt-2">{word.vibe}</p>}
         <h1 className="text-3xl sm:text-5xl font-bold text-[color:var(--text)] mt-2 break-words inline-flex items-center gap-2">
           {word.word}
           <AudioPronunciationButton word={word.word} size={22} className="align-middle" />
@@ -3612,7 +3667,12 @@ function WordDetailPage({ listId, wordId, lists, onBack }) {
       <div className="space-y-6">
         <div>
           <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-dim)] mb-1">Definition</p>
-          <p className="text-lg text-[color:var(--text)] leading-relaxed">{word.def || "No definition yet — edit this word in the Vocab Deck."}</p>
+          <p className="text-lg text-[color:var(--text)] leading-relaxed">
+            {(uiLang === "zh" && word.chinese) ? word.chinese : (word.def || "No definition yet — edit this word in the Vocab Deck.")}
+          </p>
+          {uiLang === "zh" && word.chinese && word.def && (
+            <p className="text-sm text-[color:var(--text-faint)] mt-1">{word.def}</p>
+          )}
         </div>
 
         {coll.length > 0 && (
@@ -3628,13 +3688,17 @@ function WordDetailPage({ listId, wordId, lists, onBack }) {
 
         <div>
           <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-dim)] mb-2">Example sentences</p>
-          <div className="space-y-2">
-            {examples.map((s, i) => (
-              <div key={i} className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-4">
-                <p className="text-sm text-[color:var(--text)] italic leading-relaxed">{s}</p>
-              </div>
-            ))}
-          </div>
+          {examples.length > 0 ? (
+            <div className="space-y-2">
+              {examples.map((s, i) => (
+                <div key={i} className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-4">
+                  <p className="text-sm text-[color:var(--text)] italic leading-relaxed">{s}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-[color:var(--text-faint)]">No example sentence found for this word yet.</p>
+          )}
         </div>
 
         <div className="rounded-xl bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] p-4">
@@ -3649,16 +3713,23 @@ function WordDetailPage({ listId, wordId, lists, onBack }) {
 }
 
 /* ---------------- Learn (multi-style study session) ---------------- */
-function LearnCard({ word, style, revealed, onReveal }) {
+function LearnCard({ word, style, revealed, onReveal, uiLang }) {
+  const displayDef = (uiLang === "zh" && word.chinese) ? word.chinese : word.def;
   const examples = buildExamples(word);
   const coll = (word.coll || "").split(",").map((c) => c.trim()).filter(Boolean);
+
+  useEffect(() => {
+    // "story" shows the definition immediately (no reveal gate); the other
+    // styles only once the user actually reveals it.
+    if (style === "story" || revealed) speakWord(word.word, "us");
+  }, [word.id, style, revealed]);
 
   if (style === "story") {
     return (
       <div>
         <p className="text-xs uppercase tracking-wide text-[color:var(--text-faint)] mb-2">Read & remember</p>
         <h3 className="text-4xl font-bold text-[color:var(--text)] mb-3 inline-flex items-center gap-2">{word.word}<AudioPronunciationButton word={word.word} size={18} /></h3>
-        <p className="text-lg text-[color:var(--text)] mb-4 leading-relaxed">{word.def}</p>
+        <p className="text-lg text-[color:var(--text)] mb-4 leading-relaxed">{displayDef}</p>
         <div className="space-y-2 mb-4">
           {examples.slice(0, 2).map((s, i) => (
             <p key={i} className="text-sm text-[color:var(--text-dim)] italic leading-relaxed">{s}</p>
@@ -3677,8 +3748,12 @@ function LearnCard({ word, style, revealed, onReveal }) {
     return (
       <div>
         <p className="text-xs uppercase tracking-wide text-[color:var(--text-faint)] mb-2">Guess it from context</p>
-        <p className="text-lg text-[color:var(--text)] mb-2 leading-relaxed">{examples[0].replace(new RegExp(word.word, "i"), "____")}</p>
-        <p className="text-xs text-[color:var(--text-faint)] mb-4">Hint: {word.def}</p>
+        {examples.length > 0 ? (
+          <p className="text-lg text-[color:var(--text)] mb-2 leading-relaxed">{examples[0].replace(new RegExp(word.word, "i"), "____")}</p>
+        ) : (
+          <p className="text-sm text-[color:var(--text-faint)] mb-2 italic">No example sentence found for this word — guess from the hint instead.</p>
+        )}
+        <p className="text-xs text-[color:var(--text-faint)] mb-4">Hint: {displayDef}</p>
         {!revealed ? (
           <button onClick={onReveal} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 transition">
             <Sparkles size={14} /> Show the word
@@ -3708,8 +3783,8 @@ function LearnCard({ word, style, revealed, onReveal }) {
         </button>
       ) : (
         <div className="text-left mt-4 space-y-3">
-          <p className="text-base text-[color:var(--text)] leading-relaxed">{word.def}</p>
-          <p className="text-sm text-[color:var(--text-dim)] italic leading-relaxed">{examples[0]}</p>
+          <p className="text-base text-[color:var(--text)] leading-relaxed">{displayDef}</p>
+          {examples.length > 0 && <p className="text-sm text-[color:var(--text-dim)] italic leading-relaxed">{examples[0]}</p>}
           {coll.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {coll.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-accent-500/15 text-[color:var(--accent-text)] ring-1 ring-accent-500/30">{c}</span>)}
@@ -3721,7 +3796,7 @@ function LearnCard({ word, style, revealed, onReveal }) {
   );
 }
 
-function MemorizeSession({ list, pool, updateList, setStats, registerActivity, onOpenDetail, onExit, setView }) {
+function MemorizeSession({ list, pool, updateList, setStats, registerActivity, onOpenDetail, onExit, setView, uiLang }) {
   const [subPhase, setSubPhase] = useState("session");
   const [data, setData] = useState(() => {
     const obj = {};
@@ -3744,6 +3819,12 @@ function MemorizeSession({ list, pool, updateList, setStats, registerActivity, o
   };
   const [currentId, setCurrentId] = useState(() => pick(null, data));
   const [showDetails, setShowDetails] = useState(false);
+
+  useEffect(() => {
+    if (!showDetails) return;
+    const w = pool.find((p) => p.id === currentId);
+    if (w) speakWord(w.word, "us");
+  }, [showDetails, currentId]);
 
   const finishSession = (finalData) => {
     const today = todayStr();
@@ -3831,6 +3912,7 @@ function MemorizeSession({ list, pool, updateList, setStats, registerActivity, o
   const doneCount = Object.values(data).filter((d) => d.done).length;
   const coll = (word.coll || "").split(",").map((c) => c.trim()).filter(Boolean);
   const examples = buildExamples(word);
+  const displayDef = (uiLang === "zh" && word.chinese) ? word.chinese : word.def;
 
   const previewRate = (rating) => {
     if (!cur.memStarted) return rating === "know" ? 100 : rating === "blurry" ? 20 : 0;
@@ -3871,7 +3953,7 @@ function MemorizeSession({ list, pool, updateList, setStats, registerActivity, o
             {word.word}
             <AudioPronunciationButton word={word.word} size={20} />
           </h3>
-          <p className="text-xs uppercase tracking-widest text-[color:var(--text-faint)] mt-1">{word.vibe}</p>
+          {word.vibe && <p className="text-xs uppercase tracking-widest text-[color:var(--text-faint)] mt-1">{word.vibe}</p>}
         </div>
 
         <div className="flex-1 flex flex-col justify-center px-8 py-6">
@@ -3886,7 +3968,7 @@ function MemorizeSession({ list, pool, updateList, setStats, registerActivity, o
             <div className="text-left w-full space-y-5">
               <div>
                 <p className="text-[10px] uppercase tracking-wide text-[color:var(--text-faint)] mb-1.5">Definition</p>
-                <p className="text-base text-[color:var(--text)] leading-relaxed">{word.def}</p>
+                <p className="text-base text-[color:var(--text)] leading-relaxed">{displayDef}</p>
               </div>
 
               {examples.length > 0 && (
@@ -3966,7 +4048,7 @@ const LEARN_MODES = [
   { id: "yesterday", label: "Review Yesterday", desc: "Go back over everything you learned yesterday." },
 ];
 
-function LearnView({ list, updateList, setStats, registerActivity, onOpenDetail, setView }) {
+function LearnView({ list, updateList, setStats, registerActivity, onOpenDetail, setView, uiLang }) {
   const [phase, setPhase] = useState("home");
   const [mode, setMode] = useState(() => load(nsKey("learnMode"), "quick"));
   const [sessionPool, setSessionPool] = useState([]);
@@ -4040,7 +4122,7 @@ function LearnView({ list, updateList, setStats, registerActivity, onOpenDetail,
     return (
       <MemorizeSession list={list} pool={memPool} updateList={updateList} setStats={setStats}
         registerActivity={registerActivity} onOpenDetail={onOpenDetail} setView={setView}
-        onExit={() => setPhase("home")} />
+        onExit={() => setPhase("home")} uiLang={uiLang} />
     );
   }
 
@@ -4141,7 +4223,7 @@ function LearnView({ list, updateList, setStats, registerActivity, onOpenDetail,
           <div>
             <span className="text-2xl">{VIBE_EMOJI[word.vibe] || "✨"}</span>
             <div className="mt-3">
-              <LearnCard word={word} style={style} revealed={revealed} onReveal={() => setRevealed(true)} />
+              <LearnCard word={word} style={style} revealed={revealed} onReveal={() => setRevealed(true)} uiLang={uiLang} />
             </div>
           </div>
           {(style === "story" || revealed) && (
@@ -4222,7 +4304,7 @@ function buildQuestion(word, allWords, enabledTypes) {
   return { type, word, sentence, def: word.def, answer: word.word };
 }
 
-function QuizView({ list, allWords, updateList, setStats, registerActivity, onOpenDetail, setView }) {
+function QuizView({ list, allWords, updateList, setStats, registerActivity, onOpenDetail, setView, uiLang }) {
   const [phase, setPhase] = useState("home");
   const [mode, setMode] = useState(() => load(nsKey("quizMode"), "adaptive"));
   const [enabledStyles, setEnabledStyles] = useState(() => load(nsKey("quizStyles"), QUIZ_STYLES.map((s) => s.id)));
@@ -4335,7 +4417,7 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity, onOp
     return (
       <MemorizeSession list={list} pool={memPool} updateList={updateList} setStats={setStats}
         registerActivity={registerActivity} onOpenDetail={onOpenDetail} setView={setView}
-        onExit={() => setPhase("home")} />
+        onExit={() => setPhase("home")} uiLang={uiLang} />
     );
   }
 
@@ -4800,7 +4882,10 @@ Assess: (1) Contextual accuracy — right meaning and tone per word. (2) Colloca
 
       <div className="flex-1 grid grid-cols-1 md:grid-cols-[280px_1fr] gap-0 min-h-0 border-t border-[color:var(--border)]">
         <div className="border-r border-[color:var(--border)] border-b md:border-b-0 overflow-y-auto p-5 max-h-56 md:max-h-none">
-          <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-dim)] mb-3">Target checklist</p>
+          <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-dim)] mb-3">Target checklist — today's words</p>
+          {words.length === 0 && (
+            <p className="text-xs text-[color:var(--text-faint)] mb-3">You haven't learned any new words today yet — head to Learn first, then come back here to practice using them.</p>
+          )}
           <div className="space-y-2">
             {words.map((w) => {
               const on = used[w.id];
@@ -4828,7 +4913,7 @@ Assess: (1) Contextual accuracy — right meaning and tone per word. (2) Colloca
           </div>
 
           <div className="flex justify-end mt-4">
-            <button onClick={analyze} disabled={loading}
+            <button onClick={analyze} disabled={loading || words.length === 0}
               className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-r from-accent-500 to-teal-500 text-[#0a0e14] text-sm font-semibold hover:from-accent-400 hover:to-teal-400 disabled:opacity-50 transition">
               {loading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
               {loading ? "Analyzing…" : `Analyze with ${PROVIDERS[provider].short}`}
