@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Vocab Master</title>
 <meta name="description" content="Learn it. Own it. — vocabulary learning with spaced repetition and AI." />
@@ -20,18 +23,70 @@
 <script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
-  tailwind.config = { darkMode: ["selector", '[data-theme="dark"]'] };
+  tailwind.config = {
+    darkMode: ["selector", '[data-theme="dark"], [data-theme="dracula"], [data-theme="cyberpunk"], [data-theme="nord"]'],
+    theme: {
+      extend: {
+        colors: {
+          accent: {
+            100: "rgb(var(--accent-100) / <alpha-value>)",
+            300: "rgb(var(--accent-300) / <alpha-value>)",
+            400: "rgb(var(--accent-400) / <alpha-value>)",
+            500: "rgb(var(--accent-500) / <alpha-value>)",
+            600: "rgb(var(--accent-600) / <alpha-value>)",
+            700: "rgb(var(--accent-700) / <alpha-value>)",
+            800: "rgb(var(--accent-800) / <alpha-value>)",
+            900: "rgb(var(--accent-900) / <alpha-value>)",
+          },
+        },
+      },
+    },
+  };
 </script>
 <style>
+  /* Each theme sets the same variable contract (bg/surface/text/border/accent),
+     so every component that reads var(--x) or uses the accent-* color family
+     (Tailwind config above, backed by these vars) re-skins automatically —
+     no per-theme component code needed. */
   :root[data-theme="dark"] {
     --bg:#0d1117; --surface:#11161f; --surface2:#0a0e14;
     --text:#f1f5f9; --text-dim:#cbd5e1; --text-faint:#94a3b8;
     --border: rgba(255,255,255,0.12); --accent-text:#6ee7b7;
+    --accent-100:209 250 229; --accent-300:110 231 183; --accent-400:52 211 153;
+    --accent-500:16 185 129; --accent-600:5 150 105; --accent-700:4 120 87;
+    --accent-800:6 95 70; --accent-900:6 78 59;
   }
   :root[data-theme="light"] {
     --bg:#f4f6f8; --surface:#ffffff; --surface2:#eef1f5;
     --text:#0f172a; --text-dim:#334155; --text-faint:#55627a;
     --border: rgba(15,23,42,0.12); --accent-text:#047857;
+    --accent-100:209 250 229; --accent-300:110 231 183; --accent-400:52 211 153;
+    --accent-500:16 185 129; --accent-600:5 150 105; --accent-700:4 120 87;
+    --accent-800:6 95 70; --accent-900:6 78 59;
+  }
+  :root[data-theme="dracula"] {
+    --bg:#282a36; --surface:#2f3244; --surface2:#21222c;
+    --text:#f8f8f2; --text-dim:#d7d7ce; --text-faint:#9a9caa;
+    --border: rgba(248,248,242,0.12); --accent-text:#ff92d0;
+    --accent-100:255 214 236; --accent-300:255 179 222; --accent-400:255 154 211;
+    --accent-500:255 121 198; --accent-600:232 95 176; --accent-700:201 74 149;
+    --accent-800:156 56 115; --accent-900:107 38 80;
+  }
+  :root[data-theme="cyberpunk"] {
+    --bg:#0b0b0f; --surface:#131318; --surface2:#08080b;
+    --text:#e8faff; --text-dim:#a9c7cf; --text-faint:#748c92;
+    --border: rgba(0,255,242,0.15); --accent-text:#3af2ff;
+    --accent-100:204 253 255; --accent-300:124 245 255; --accent-400:42 240 255;
+    --accent-500:5 224 242; --accent-600:0 184 201; --accent-700:0 144 158;
+    --accent-800:0 103 111; --accent-900:0 61 66;
+  }
+  :root[data-theme="nord"] {
+    --bg:#2e3440; --surface:#3b4252; --surface2:#242933;
+    --text:#eceff4; --text-dim:#c3cad6; --text-faint:#8b96a8;
+    --border: rgba(236,239,244,0.14); --accent-text:#a3d4e0;
+    --accent-100:232 244 247; --accent-300:184 221 230; --accent-400:157 208 220;
+    --accent-500:136 192 208; --accent-600:107 163 181; --accent-700:79 131 149;
+    --accent-800:56 98 114; --accent-900:35 65 77;
   }
   html, body { background:var(--bg); font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif; }
   ::placeholder { color: var(--text-faint); }
@@ -41,7 +96,7 @@
   @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   @keyframes pop { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); } }
-  @keyframes softPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.35); } 50% { box-shadow: 0 0 0 8px rgba(16,185,129,0); } }
+  @keyframes softPulse { 0%, 100% { box-shadow: 0 0 0 0 rgb(var(--accent-500) / 0.35); } 50% { box-shadow: 0 0 0 8px rgb(var(--accent-500) / 0); } }
   @keyframes floatIn { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
   @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
   @keyframes confettiFall { 0% { transform: translateY(-20px) rotate(0deg); opacity: 1; } 100% { transform: translateY(140px) rotate(360deg); opacity: 0; } }
@@ -101,6 +156,7 @@ const Trash2 = (p) => <Icon {...p} path='<polyline points="3 6 5 6 21 6"/><path 
 const ArrowLeft = (p) => <Icon {...p} path='<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>' />;
 const Loader2 = (p) => <Icon {...p} path='<path d="M21 12a9 9 0 1 1-6.219-8.56"/>' />;
 const Clock = (p) => <Icon {...p} path='<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>' />;
+const Volume2 = (p) => <Icon {...p} path='<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>' />;
 const ShieldCheck = (p) => <Icon {...p} path='<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><polyline points="9 12 11 14 15 10"/>' />;
 const ShieldAlert = (p) => <Icon {...p} path='<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="16" x2="12.01" y2="16"/>' />;
 const ChevronRight = (p) => <Icon {...p} path='<polyline points="9 18 15 12 9 6"/>' />;
@@ -176,6 +232,7 @@ const OPENAI_PROXY_URL = "https://vbmaster-proxy.vbmaster-proxy.workers.dev/open
 const LEADERBOARD_BASE = "https://vbmaster-proxy.vbmaster-proxy.workers.dev";
 
 const LEADERBOARD_CATEGORIES = [
+  { id: "points", label: "Points", icon: "Sparkles" },
   { id: "totalLearned", label: "Words Learned", icon: "BookOpen" },
   { id: "totalMastered", label: "Words Mastered", icon: "Award" },
   { id: "vocabSize", label: "词汇量 Vocab Size", icon: "Target" },
@@ -250,6 +307,41 @@ const VOCAB_TEST_TIERS = [
 ];
 const VOCAB_TEST_FAKES = ["glimmerate", "trepidous", "fluxenary", "consolute", "brindlement", "vexolate", "quandric", "sombrature"];
 
+// Curated topic word packs — original word selections, not copied from any
+// existing published list. Definitions/examples aren't pre-written here; they
+// come from the same free-dictionary + backfill pipeline used everywhere else.
+const TOPIC_PACKS = [
+  { id: "travel", label: "Travel", labelZh: "旅行", icon: "Globe", words: ["itinerary", "layover", "excursion", "hostel", "currency", "customs", "visa", "passport", "souvenir", "landmark", "embark", "disembark", "backpacking", "wanderlust", "accommodation", "sightseeing", "terminal", "voyage", "expedition", "nomad"] },
+  { id: "finance", label: "Finance & Business", labelZh: "金融商务", icon: "Target", words: ["revenue", "equity", "liability", "dividend", "portfolio", "inflation", "asset", "budget", "invoice", "merger", "acquisition", "stakeholder", "leverage", "liquidity", "valuation", "entrepreneur", "negotiate", "forecast", "audit", "subsidy"] },
+  { id: "technology", label: "Technology", labelZh: "科技", icon: "Sparkles", words: ["algorithm", "bandwidth", "encryption", "interface", "firmware", "protocol", "latency", "scalable", "deprecated", "repository", "middleware", "bootstrap", "asynchronous", "throughput", "sandbox", "endpoint", "obsolete", "automation", "cybersecurity", "integration"] },
+  { id: "science", label: "Science & Nature", labelZh: "科学自然", icon: "Flame", words: ["ecosystem", "photosynthesis", "biodiversity", "catalyst", "hypothesis", "sediment", "organism", "molecule", "habitat", "extinction", "evolution", "gravity", "velocity", "nucleus", "mutation", "sustainable", "renewable", "erosion", "climate", "species"] },
+  { id: "academic", label: "Academic & Exam Prep", labelZh: "学术备考", icon: "GraduationCap", words: ["synthesis", "discourse", "empirical", "coherent", "rhetoric", "paradigm", "methodology", "critique", "thesis", "citation", "plagiarism", "curriculum", "dissertation", "feedback", "literacy", "cognition", "pedagogy", "abstract", "annotate", "scholarship"] },
+  { id: "social", label: "Everyday & Social", labelZh: "日常社交", icon: "UserCircle", words: ["acquaintance", "empathy", "gratitude", "resilience", "routine", "boundary", "compromise", "etiquette", "hospitality", "sincerity", "tact", "rapport", "vulnerability", "mindfulness", "generosity", "patience", "humility", "candor", "warmth", "solidarity"] },
+];
+const TOPIC_ICON_MAP = { Globe, Target, Sparkles, Flame, GraduationCap, UserCircle };
+
+const PERSONALIZED_LIST_SIZE = 30;
+const PERSONALIZED_LIST_DAYS = 28;
+
+function buildPersonalizedWordList(estimate, topicId) {
+  let pool;
+  if (topicId && topicId !== "mixed") {
+    const topic = TOPIC_PACKS.find((t) => t.id === topicId);
+    pool = topic ? [...topic.words] : [];
+  } else {
+    let tierIdx = VOCAB_TEST_TIERS.findIndex((t) => estimate < t.pool);
+    if (tierIdx === -1) tierIdx = VOCAB_TEST_TIERS.length - 1;
+    const nearTiers = [VOCAB_TEST_TIERS[tierIdx], VOCAB_TEST_TIERS[Math.min(tierIdx + 1, VOCAB_TEST_TIERS.length - 1)]];
+    pool = [...new Set(nearTiers.flatMap((t) => t.words.map((w) => w.w)))];
+  }
+  return [...pool].sort(() => Math.random() - 0.5).slice(0, Math.min(PERSONALIZED_LIST_SIZE, pool.length));
+}
+
+function planForWordCount(wordCount) {
+  const newPerDay = Math.max(1, Math.ceil(wordCount / PERSONALIZED_LIST_DAYS));
+  return { newPerDay, reviewPerDay: newPerDay * 2 };
+}
+
 const PROVIDERS = {
   anthropic: {
     label: "Anthropic (Claude)", short: "Claude", free: false,
@@ -290,7 +382,9 @@ const load = (k, fallback) => {
   catch { return fallback; }
 };
 const save = (k, v) => localStorage.setItem(k, JSON.stringify(v));
-const todayStr = () => new Date().toISOString().slice(0, 10);
+// Local calendar date, not UTC — toISOString() would roll a late-night study
+// session into "tomorrow" for anyone west of UTC, making cards due too soon.
+const todayStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const addDays = (base, n) => new Date(Date.parse(base) + n * 86400000).toISOString().slice(0, 10);
 let __idCounter = 0;
 const genId = () => (window.crypto && crypto.randomUUID)
@@ -312,6 +406,9 @@ function repairListIds(lists) {
 }
 
 const buildExamples = (word) => {
+  if (word.examples && word.examples.length) return word.examples;
+  // Fallback only — used until a real example has been fetched (or if none
+  // could be found for this word at all).
   const coll = (word.coll || "").split(",").map((c) => c.trim()).filter(Boolean);
   const w = word.word.toLowerCase();
   const out = [
@@ -321,6 +418,37 @@ const buildExamples = (word) => {
   ];
   return out;
 };
+
+function AudioPronunciationButton({ word, size = 16, className = "" }) {
+  const [speaking, setSpeaking] = useState(false);
+  if (typeof window === "undefined" || !window.speechSynthesis) return null;
+
+  const speak = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const synth = window.speechSynthesis;
+    const utter = new SpeechSynthesisUtterance(word);
+    const voices = synth.getVoices();
+    const preferred = voices.find((v) => /^en-(US|GB)$/.test(v.lang) && /Google|Natural|Samantha|Daniel|Alex/i.test(v.name))
+      || voices.find((v) => v.lang === "en-US")
+      || voices.find((v) => (v.lang || "").startsWith("en"));
+    if (preferred) utter.voice = preferred;
+    utter.rate = 0.92;
+    utter.pitch = 1;
+    utter.onstart = () => setSpeaking(true);
+    utter.onend = () => setSpeaking(false);
+    utter.onerror = () => setSpeaking(false);
+    synth.cancel();
+    synth.speak(utter);
+  };
+
+  return (
+    <button type="button" onClick={speak} title="Pronounce"
+      className={`inline-flex items-center justify-center rounded-full p-1.5 hover:bg-accent-500/10 transition ${className}`}>
+      <Volume2 size={size} className={speaking ? "text-accent-500 animate-pulse" : "text-[color:var(--text-faint)] hover:text-[color:var(--accent-text)]"} />
+    </button>
+  );
+}
 
 /* ---------------- Seed data ---------------- */
 const SEED_WORDS = [
@@ -625,7 +753,7 @@ function AuthGate({ onAuth }) {
               <div>
                 <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Username or email</label>
                 <input value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="ada or ada@example.com"
-                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
               </div>
               <div>
                 <div className="flex items-center justify-between mb-1.5">
@@ -635,12 +763,12 @@ function AuthGate({ onAuth }) {
                   </button>
                 </div>
                 <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••"
-                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
               </div>
               {error && <p className="text-[11px] text-rose-700 dark:text-rose-300">{error}</p>}
-              {info && <p className="text-[11px] text-emerald-700 dark:text-emerald-300">{info}</p>}
+              {info && <p className="text-[11px] text-accent-700 dark:text-accent-300">{info}</p>}
               <button type="submit" disabled={loading}
-                className="w-full py-2.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 disabled:opacity-50 transition">
+                className="w-full py-2.5 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 disabled:opacity-50 transition">
                 {loading ? "Logging in…" : "Log in"}
               </button>
             </form>
@@ -651,21 +779,21 @@ function AuthGate({ onAuth }) {
               <div>
                 <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Username</label>
                 <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="ada"
-                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
               </div>
               <div>
                 <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Email</label>
                 <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com"
-                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
               </div>
               <div>
                 <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Password</label>
                 <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 6 characters"
-                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
               </div>
               {error && <p className="text-[11px] text-rose-700 dark:text-rose-300">{error}</p>}
               <button type="submit" disabled={loading}
-                className="w-full py-2.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 disabled:opacity-50 transition">
+                className="w-full py-2.5 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 disabled:opacity-50 transition">
                 {loading ? "Creating account…" : "Create account"}
               </button>
             </form>
@@ -673,15 +801,15 @@ function AuthGate({ onAuth }) {
 
           {mode === "verify" && (
             <form onSubmit={submitVerify} className="space-y-3">
-              {info && <p className="text-[11px] text-emerald-700 dark:text-emerald-300">{info}</p>}
+              {info && <p className="text-[11px] text-accent-700 dark:text-accent-300">{info}</p>}
               <div>
                 <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">6-digit code</label>
                 <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="123456" inputMode="numeric"
-                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm tracking-[0.3em] text-center text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm tracking-[0.3em] text-center text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
               </div>
               {error && <p className="text-[11px] text-rose-700 dark:text-rose-300">{error}</p>}
               <button type="submit" disabled={loading}
-                className="w-full py-2.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 disabled:opacity-50 transition">
+                className="w-full py-2.5 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 disabled:opacity-50 transition">
                 {loading ? "Verifying…" : "Verify"}
               </button>
               <button type="button" onClick={() => resendCode("register")} disabled={resendCooldown > 0 || loading}
@@ -696,11 +824,11 @@ function AuthGate({ onAuth }) {
               <div>
                 <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Account email</label>
                 <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com"
-                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
               </div>
               {error && <p className="text-[11px] text-rose-700 dark:text-rose-300">{error}</p>}
               <button type="submit" disabled={loading}
-                className="w-full py-2.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 disabled:opacity-50 transition">
+                className="w-full py-2.5 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 disabled:opacity-50 transition">
                 {loading ? "Sending…" : "Send reset code"}
               </button>
               <button type="button" onClick={() => switchMode("login")} className="w-full py-2 text-xs text-[color:var(--text-dim)] hover:text-[color:var(--text)] transition">
@@ -711,20 +839,20 @@ function AuthGate({ onAuth }) {
 
           {mode === "reset" && (
             <form onSubmit={submitReset} className="space-y-3">
-              {info && <p className="text-[11px] text-emerald-700 dark:text-emerald-300">{info}</p>}
+              {info && <p className="text-[11px] text-accent-700 dark:text-accent-300">{info}</p>}
               <div>
                 <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">6-digit code</label>
                 <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="123456" inputMode="numeric"
-                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm tracking-[0.3em] text-center text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm tracking-[0.3em] text-center text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
               </div>
               <div>
                 <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">New password</label>
                 <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="At least 6 characters"
-                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
               </div>
               {error && <p className="text-[11px] text-rose-700 dark:text-rose-300">{error}</p>}
               <button type="submit" disabled={loading}
-                className="w-full py-2.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 disabled:opacity-50 transition">
+                className="w-full py-2.5 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 disabled:opacity-50 transition">
                 {loading ? "Resetting…" : "Reset password"}
               </button>
               <button type="button" onClick={() => resendCode("reset")} disabled={resendCooldown > 0 || loading}
@@ -815,6 +943,47 @@ function App({ onLogout }) {
   const totalIntroduced = allWords.filter((w) => w.seen).length;
   const totalMastered = allWords.filter((w) => w.box >= 5).length;
 
+  // Points are derived from existing progress data rather than tracked as a
+  // separate ledger, so they can never drift out of sync: +2 per word
+  // introduced, +5 per word mastered, +10 per completed session, +1 per
+  // streak day. What points unlock is still undecided — for now they're a
+  // visible reward signal (Dashboard + leaderboard), nothing is spent yet.
+  const points = totalIntroduced * 2 + totalMastered * 5 + stats.sessions * 10 + streak.count;
+
+  // Backfills real example sentences (dictionaryapi.dev) for words in the
+  // active list that don't have any yet, in small batches, so seed/imported/
+  // manually-added words all eventually get real examples instead of the
+  // synthesized fallback in buildExamples(). `examples: []` marks "looked,
+  // found nothing" so a word without a real example isn't retried forever.
+  const missingExamplesCount = useMemo(
+    () => activeList ? activeList.words.filter((w) => w.def && w.examples === undefined).length : 0,
+    [activeList]
+  );
+  useEffect(() => {
+    if (!activeList || !missingExamplesCount) return;
+    const candidates = activeList.words.filter((w) => w.def && w.examples === undefined).slice(0, 40);
+    let cancelled = false;
+    (async () => {
+      const results = await fetchExamplesBatch(candidates.map((w) => w.word));
+      if (cancelled) return;
+      let aiResults = {};
+      if (apiKey) {
+        const stillMissing = candidates.filter((w) => !results[w.word.trim().toLowerCase()]).slice(0, 10);
+        if (stillMissing.length) aiResults = await fetchAiExamplesBatch(stillMissing, apiKey, model, provider).catch(() => ({}));
+      }
+      if (cancelled) return;
+      updateList(activeList.id, (l) => ({
+        ...l,
+        words: l.words.map((w) => {
+          if (!candidates.some((c) => c.id === w.id)) return w;
+          const key = w.word.trim().toLowerCase();
+          return { ...w, examples: results[key] || aiResults[key] || [] };
+        }),
+      }));
+    })();
+    return () => { cancelled = true; };
+  }, [activeList?.id, missingExamplesCount]);
+
   useEffect(() => {
     if (!profile.leaderboardOptIn) return;
     const t = setTimeout(() => {
@@ -824,12 +993,12 @@ function App({ onLogout }) {
         body: JSON.stringify({
           userId: profile.userId,
           displayName: profile.displayName,
-          stats: { totalLearned: totalIntroduced, totalMastered, vocabSize: vocabTestResult, streak: streak.count },
+          stats: { totalLearned: totalIntroduced, totalMastered, vocabSize: vocabTestResult, streak: streak.count, points },
         }),
       }).catch(() => {});
     }, 1200);
     return () => clearTimeout(t);
-  }, [profile.leaderboardOptIn, profile.userId, profile.displayName, totalIntroduced, totalMastered, vocabTestResult, streak.count]);
+  }, [profile.leaderboardOptIn, profile.userId, profile.displayName, totalIntroduced, totalMastered, vocabTestResult, streak.count, points]);
 
   const prevOptIn = useRef(profile.leaderboardOptIn);
   useEffect(() => {
@@ -847,11 +1016,29 @@ function App({ onLogout }) {
 
   const updateList = (id, updater) => setLists((ls) => ls.map((l) => (l.id === id ? updater(l) : l)));
 
+  const createPersonalizedList = (words, name) => {
+    const id = `custom-${Date.now()}`;
+    const wordObjs = words.map((w) => freshWord({ word: w }));
+    const plan = planForWordCount(wordObjs.length);
+    setLists((ls) => [...ls, { id, name, source: "custom", plan, createdAt: Date.now(), words: wordObjs }]);
+    setActiveListId(id);
+    setView("learn");
+    freeDictLookupBatch(wordObjs.map((w) => w.word)).then((results) => {
+      setLists((ls) => ls.map((l) => (l.id !== id ? l : {
+        ...l,
+        words: l.words.map((w) => {
+          const found = results[w.word.trim().toLowerCase()];
+          return found ? { ...w, def: found.def } : w;
+        }),
+      })));
+    }).catch(() => {});
+  };
+
   const registerActivity = () => {
     const t = todayStr();
     setStreak((s) => {
       if (s.last === t) return s;
-      const yest = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      const yest = todayStr(new Date(Date.now() - 86400000));
       const count = s.last === yest ? s.count + 1 : 1;
       return { count, last: t };
     });
@@ -913,7 +1100,7 @@ function App({ onLogout }) {
             return (
               <button key={n.id} onClick={() => { setView(n.id); setDetailWord(null); setMobileNavOpen(false); }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
-                  active ? "bg-emerald-500/15 text-[color:var(--accent-text)] ring-1 ring-emerald-400/30"
+                  active ? "bg-accent-500/15 text-[color:var(--accent-text)] ring-1 ring-accent-400/30"
                     : "text-[color:var(--text-dim)] hover:text-[color:var(--text)] hover:bg-white/5"}`}>
                 <n.icon size={17} />
                 <span className="flex-1 text-left">{n.label}</span>
@@ -927,7 +1114,7 @@ function App({ onLogout }) {
             <Flame size={14} /> {streak.count} day streak
           </div>
           <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg ${
-            apiKey ? "bg-emerald-500/10 text-[color:var(--accent-text)]" : "bg-amber-500/10 text-amber-700 dark:text-amber-300"}`}>
+            apiKey ? "bg-accent-500/10 text-[color:var(--accent-text)]" : "bg-amber-500/10 text-amber-700 dark:text-amber-300"}`}>
             {apiKey ? <ShieldCheck size={14} /> : <ShieldAlert size={14} />}
             {apiKey ? `${PROVIDERS[provider].short} connected` : "No API key"}
           </div>
@@ -942,7 +1129,7 @@ function App({ onLogout }) {
         ) : (
           <div key={view} className="animate-fade-up">
             {view === "dashboard" && (
-              <Dashboard {...{ apiKey, provider, masteredCount: totalMastered, totalIntroduced, todayLearned, stats, streak, activeList, learnPending, setView }} />
+              <Dashboard {...{ apiKey, provider, masteredCount: totalMastered, totalIntroduced, todayLearned, stats, streak, activeList, learnPending, setView, points }} />
             )}
             {view === "lists" && (
               <WordLists {...{ lists, setLists, activeListId, setActiveListId, apiKey, model, provider }} />
@@ -966,7 +1153,7 @@ function App({ onLogout }) {
               <Sandbox {...{ words: activeList.words, apiKey, model, provider, setStats, registerActivity, promptKey: () => setShowKeyModal(true) }} />
             )}
             {view === "leaderboard" && (
-              <LeaderboardView {...{ profile, setProfile, uiLang, setVocabTestResult, liveStats: { totalLearned: totalIntroduced, totalMastered, vocabSize: vocabTestResult, streak: streak.count } }} />
+              <LeaderboardView {...{ profile, setProfile, uiLang, setVocabTestResult, onCreateList: createPersonalizedList, liveStats: { totalLearned: totalIntroduced, totalMastered, vocabSize: vocabTestResult, streak: streak.count, points } }} />
             )}
             {view === "settings" && (
               <SettingsView {...{ apiKey, setApiKey, model, setModel, provider, setProvider, providerKeys, providerModels, theme, setTheme, onLogout, profile, setProfile, uiLang, setUiLang }} />
@@ -1001,9 +1188,9 @@ function CalendarHeatmap({ dailyLearned, activeList }) {
 
   const intensity = (count) => {
     if (!count) return "bg-[color:var(--surface2)] text-[color:var(--text-faint)]";
-    if (count <= 2) return "bg-emerald-500/25 text-emerald-800 dark:text-emerald-100";
-    if (count <= 5) return "bg-emerald-500/50 text-emerald-900 dark:text-white";
-    return "bg-emerald-500/80 text-white";
+    if (count <= 2) return "bg-accent-500/25 text-accent-800 dark:text-accent-100";
+    if (count <= 5) return "bg-accent-500/50 text-accent-900 dark:text-white";
+    return "bg-accent-500/80 text-white";
   };
 
   const isFuture = (y, m) => y > now.getFullYear() || (y === now.getFullYear() && m > now.getMonth());
@@ -1039,7 +1226,7 @@ function CalendarHeatmap({ dailyLearned, activeList }) {
           const selected = key === selectedDate;
           return (
             <button key={i} onClick={() => setSelectedDate(key)} title={`${key}: ${count} word${count === 1 ? "" : "s"} learned`}
-              className={`aspect-square rounded-md flex items-center justify-center text-[11px] font-medium transition ${intensity(count)} ${today ? "ring-2 ring-emerald-500" : ""} ${selected ? "outline outline-2 outline-offset-1 outline-[color:var(--accent-text)]" : ""}`}>
+              className={`aspect-square rounded-md flex items-center justify-center text-[11px] font-medium transition ${intensity(count)} ${today ? "ring-2 ring-accent-500" : ""} ${selected ? "outline outline-2 outline-offset-1 outline-[color:var(--accent-text)]" : ""}`}>
               {d}
             </button>
           );
@@ -1049,9 +1236,9 @@ function CalendarHeatmap({ dailyLearned, activeList }) {
       <div className="flex items-center justify-end gap-1.5 mt-4 text-[10px] text-[color:var(--text-faint)]">
         <span>Less</span>
         <span className="h-3 w-3 rounded bg-[color:var(--surface2)]" />
-        <span className="h-3 w-3 rounded bg-emerald-500/25" />
-        <span className="h-3 w-3 rounded bg-emerald-500/50" />
-        <span className="h-3 w-3 rounded bg-emerald-500/80" />
+        <span className="h-3 w-3 rounded bg-accent-500/25" />
+        <span className="h-3 w-3 rounded bg-accent-500/50" />
+        <span className="h-3 w-3 rounded bg-accent-500/80" />
         <span>More</span>
       </div>
 
@@ -1083,7 +1270,7 @@ function DayDetail({ dateStr, dailyLearned, activeList }) {
                 </p>
                 {goal !== null && (
                   <div className="h-1.5 rounded-full bg-[color:var(--surface2)] mt-2 overflow-hidden">
-                    <div className="h-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
+                    <div className="h-full bg-accent-500 transition-all" style={{ width: `${pct}%` }} />
                   </div>
                 )}
               </>
@@ -1105,13 +1292,13 @@ function DayDetail({ dateStr, dailyLearned, activeList }) {
 }
 
 /* ---------------- Dashboard ---------------- */
-function Dashboard({ apiKey, provider, masteredCount, totalIntroduced, todayLearned, stats, streak, activeList, learnPending, setView }) {
+function Dashboard({ apiKey, provider, masteredCount, totalIntroduced, todayLearned, stats, streak, activeList, learnPending, setView, points }) {
   const goal = activeList?.plan?.newPerDay || 5;
   const pct = Math.min(100, Math.round((todayLearned / goal) * 100));
 
   const cards = [
     { label: "Learned today", value: `${todayLearned}/${goal}`, icon: Target, tint: "text-sky-600 dark:text-sky-300", chip: "bg-sky-500/15", glow: "from-sky-500/10" },
-    { label: "Total introduced", value: totalIntroduced, icon: BookOpen, tint: "text-emerald-600 dark:text-emerald-300", chip: "bg-emerald-500/15", glow: "from-emerald-500/10" },
+    { label: "Total introduced", value: totalIntroduced, icon: BookOpen, tint: "text-accent-600 dark:text-accent-300", chip: "bg-accent-500/15", glow: "from-accent-500/10" },
     { label: "Mastered", value: masteredCount, icon: Award, tint: "text-violet-600 dark:text-violet-300", chip: "bg-violet-500/15", glow: "from-violet-500/10" },
     { label: "Sessions completed", value: stats.sessions, icon: Trophy, tint: "text-amber-600 dark:text-amber-300", chip: "bg-amber-500/15", glow: "from-amber-500/10" },
   ];
@@ -1123,24 +1310,29 @@ function Dashboard({ apiKey, provider, masteredCount, totalIntroduced, todayLear
         <h2 className="text-2xl font-semibold text-[color:var(--text)]">Your writing cockpit</h2>
       </header>
 
-      <div className="relative overflow-hidden mb-8 rounded-2xl bg-gradient-to-br from-emerald-500/15 via-teal-500/8 to-sky-500/5 ring-1 ring-emerald-500/25 p-6 flex items-center gap-6 animate-fade-up">
-        <div className="pointer-events-none absolute -top-10 -right-10 h-40 w-40 rounded-full bg-emerald-400/10 blur-3xl" />
+      <div className="relative overflow-hidden mb-8 rounded-2xl bg-gradient-to-br from-accent-500/15 via-teal-500/8 to-sky-500/5 ring-1 ring-accent-500/25 p-6 flex items-center gap-6 animate-fade-up">
+        <div className="pointer-events-none absolute -top-10 -right-10 h-40 w-40 rounded-full bg-accent-400/10 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-14 -left-8 h-32 w-32 rounded-full bg-violet-400/10 blur-3xl" />
         <div className="h-20 w-20 rounded-full flex items-center justify-center relative shrink-0 transition-transform duration-300 hover:scale-105"
-          style={{ background: `conic-gradient(#10b981 ${pct}%, rgba(120,120,120,0.18) ${pct}%)`, transition: "background 0.6s ease" }}>
+          style={{ background: `conic-gradient(rgb(var(--accent-500)) ${pct}%, rgba(120,120,120,0.18) ${pct}%)`, transition: "background 0.6s ease" }}>
           <div className="rounded-full bg-[color:var(--surface)] flex items-center justify-center text-sm font-bold text-[color:var(--text)]" style={{ height: 60, width: 60 }}>
             {pct}%
           </div>
         </div>
         <div className="flex-1">
-          <p className="text-lg font-semibold text-[color:var(--text)] flex items-center gap-2">
-            <Flame className="text-orange-500 dark:text-orange-400" size={20} /> {streak.count}-day streak
-          </p>
+          <div className="flex items-center gap-3 flex-wrap">
+            <p className="text-lg font-semibold text-[color:var(--text)] flex items-center gap-2">
+              <Flame className="text-orange-500 dark:text-orange-400" size={20} /> {streak.count}-day streak
+            </p>
+            <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-300 ring-1 ring-amber-500/25">
+              <Sparkles size={12} /> {points.toLocaleString()} pts
+            </span>
+          </div>
           <p className="text-sm text-[color:var(--text-dim)] mt-1">
             {todayLearned >= goal ? "Today's goal is done — great work!" : `${goal - todayLearned} more word${goal - todayLearned === 1 ? "" : "s"} to hit today's goal.`}
           </p>
           <button onClick={() => setView(learnPending ? "learn" : "quiz")}
-            className="press-scale btn-pulse mt-3 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400 transition">
+            className="press-scale btn-pulse mt-3 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-medium hover:bg-accent-400 transition">
             {learnPending ? <GraduationCap size={14} /> : <Zap size={14} />}
             {learnPending ? "Start today's session" : "Review today's words"}
           </button>
@@ -1160,7 +1352,7 @@ function Dashboard({ apiKey, provider, masteredCount, totalIntroduced, todayLear
       <div className="grid grid-cols-2 gap-4 mb-8 stagger">
         {cards.map((c) => (
           <div key={c.label}
-            className={`relative overflow-hidden rounded-xl bg-gradient-to-br ${c.glow} to-transparent bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:shadow-black/5 hover:ring-emerald-500/25`}>
+            className={`relative overflow-hidden rounded-xl bg-gradient-to-br ${c.glow} to-transparent bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:shadow-black/5 hover:ring-accent-500/25`}>
             <div className={`h-9 w-9 rounded-lg ${c.chip} flex items-center justify-center`}>
               <c.icon size={17} className={c.tint} />
             </div>
@@ -1187,10 +1379,12 @@ function SettingsView({ apiKey, setApiKey, model, setModel, provider, setProvide
   const dirty = draft !== apiKey;
   const currentUsername = load(LS.currentUsername, null);
   const info = PROVIDERS[provider];
-  const themes = [
-    { id: "light", label: "Light", icon: Sun },
-    { id: "dark", label: "Dark", icon: Moon },
-    { id: "system", label: "System", icon: Monitor },
+  const themeSwatches = [
+    { id: "light", label: "Light", bg: "#f4f6f8", surface: "#ffffff", accent: "#10b981" },
+    { id: "dark", label: "GitHub Dark", bg: "#0d1117", surface: "#11161f", accent: "#10b981" },
+    { id: "dracula", label: "Dracula", bg: "#282a36", surface: "#2f3244", accent: "#ff79c6" },
+    { id: "cyberpunk", label: "Cyberpunk", bg: "#0b0b0f", surface: "#131318", accent: "#05e0f2" },
+    { id: "nord", label: "Nord", bg: "#2e3440", surface: "#3b4252", accent: "#88c0d0" },
   ];
 
   useEffect(() => { setDraft(providerKeys[provider] || ""); setShowKey(false); }, [provider]);
@@ -1223,8 +1417,8 @@ function SettingsView({ apiKey, setApiKey, model, setModel, provider, setProvide
           {Object.entries(PROVIDERS).map(([id, p]) => (
             <button key={id} onClick={() => setProvider(id)}
               className={`relative text-left rounded-lg ring-1 px-3 py-2.5 transition ${
-                provider === id ? "bg-emerald-500/10 ring-emerald-500/40" : "ring-[color:var(--border)] hover:ring-emerald-500/20"}`}>
-              {p.free && <span className="absolute top-1.5 right-1.5 text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-[color:var(--accent-text)]">Free</span>}
+                provider === id ? "bg-accent-500/10 ring-accent-500/40" : "ring-[color:var(--border)] hover:ring-accent-500/20"}`}>
+              {p.free && <span className="absolute top-1.5 right-1.5 text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-accent-500/20 text-[color:var(--accent-text)]">Free</span>}
               <p className={`text-sm font-medium ${provider === id ? "text-[color:var(--accent-text)]" : "text-[color:var(--text)]"}`}>{p.short}</p>
               <p className="text-[10px] text-[color:var(--text-faint)] mt-0.5">{providerKeys[id] ? "Key saved" : "No key yet"}</p>
             </button>
@@ -1238,14 +1432,14 @@ function SettingsView({ apiKey, setApiKey, model, setModel, provider, setProvide
               placeholder={info.keyPlaceholder} autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
               data-lpignore="true" data-1p-ignore="true" data-bwignore="true" name="vcw-secret-not-a-password"
               style={showKey ? undefined : { WebkitTextSecurity: "disc" }}
-              className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg pl-3 pr-10 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50 font-mono" />
+              className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg pl-3 pr-10 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50 font-mono" />
             <button type="button" onClick={() => setShowKey((s) => !s)} tabIndex={-1}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[color:var(--text-faint)] hover:text-[color:var(--text)]">
               {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
           </div>
           <button onClick={() => setApiKey(draft)} disabled={!dirty}
-            className="px-4 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400 disabled:opacity-30 disabled:cursor-not-allowed transition">
+            className="px-4 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-medium hover:bg-accent-400 disabled:opacity-30 disabled:cursor-not-allowed transition">
             Save
           </button>
         </div>
@@ -1257,7 +1451,7 @@ function SettingsView({ apiKey, setApiKey, model, setModel, provider, setProvide
               OpenAI blocks direct requests from browsers, so this key is relayed through a small stateless proxy that forwards it straight to OpenAI without storing it.
             </p>
             <p className={`text-[11px] mt-1 flex items-center gap-1.5 ${
-              relayStatus === "up" ? "text-emerald-700 dark:text-emerald-300"
+              relayStatus === "up" ? "text-accent-700 dark:text-accent-300"
                 : relayStatus === "down" ? "text-rose-700 dark:text-rose-300"
                 : "text-[color:var(--text-faint)]"}`}>
               {relayStatus === "checking" && <><Loader2 size={11} className="animate-spin" /> Checking relay status…</>}
@@ -1274,14 +1468,14 @@ function SettingsView({ apiKey, setApiKey, model, setModel, provider, setProvide
             <>
               <select value={isKnown ? model : "__custom__"}
                 onChange={(e) => setModel(e.target.value === "__custom__" ? "" : e.target.value)}
-                className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50">
+                className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50">
                 {info.models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
                 <option value="__custom__">Custom model ID…</option>
               </select>
               {!isKnown && (
                 <>
                   <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="e.g. gemini-3.6-flash"
-                    className="w-full mt-2 bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] font-mono focus:outline-none focus:ring-emerald-500/50" />
+                    className="w-full mt-2 bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] font-mono focus:outline-none focus:ring-accent-500/50" />
                   <p className="text-[11px] text-[color:var(--text-faint)] mt-1.5">
                     {model ? "Not in the built-in list — probably fine if the provider renamed/updated a model." : "Type the exact model ID from the provider's docs."}
                   </p>
@@ -1294,16 +1488,32 @@ function SettingsView({ apiKey, setApiKey, model, setModel, provider, setProvide
 
       <section className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-6">
         <h3 className="text-sm font-semibold text-[color:var(--text)] mb-4">Theme</h3>
-        <div className="grid grid-cols-3 gap-3">
-          {themes.map((t) => (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
+          {themeSwatches.map((t) => (
             <button key={t.id} onClick={() => setTheme(t.id)}
-              className={`flex flex-col items-center gap-2 py-4 rounded-lg ring-1 transition ${
-                theme === t.id ? "bg-emerald-500/15 ring-emerald-400/40 text-[color:var(--accent-text)]" : "ring-[color:var(--border)] text-[color:var(--text-dim)] hover:text-[color:var(--text)]"}`}>
-              <t.icon size={20} />
-              <span className="text-xs font-medium">{t.label}</span>
+              className={`relative overflow-hidden rounded-xl ring-2 transition p-3 text-left ${
+                theme === t.id ? "ring-[color:var(--accent-text)]" : "ring-transparent hover:ring-[color:var(--border)]"}`}
+              style={{ background: t.bg }}>
+              <div className="flex items-center gap-1.5 mb-3">
+                <span className="h-3 w-3 rounded-full" style={{ background: t.accent }} />
+                <span className="h-3 w-3 rounded-full opacity-70" style={{ background: t.surface }} />
+                <span className="h-3 w-3 rounded-full opacity-40" style={{ background: t.accent }} />
+              </div>
+              <div className="rounded-md h-6 mb-2" style={{ background: t.surface }} />
+              <p className="text-xs font-medium" style={{ color: t.id === "light" ? "#0f172a" : "#f1f5f9" }}>{t.label}</p>
+              {theme === t.id && (
+                <div className="absolute top-2 right-2 h-4 w-4 rounded-full flex items-center justify-center" style={{ background: t.accent }}>
+                  <Check size={10} className="text-[#0a0e14]" strokeWidth={3} />
+                </div>
+              )}
             </button>
           ))}
         </div>
+        <button onClick={() => setTheme("system")}
+          className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg ring-1 text-xs font-medium transition ${
+            theme === "system" ? "bg-accent-500/15 ring-accent-400/40 text-[color:var(--accent-text)]" : "ring-[color:var(--border)] text-[color:var(--text-dim)] hover:text-[color:var(--text)]"}`}>
+          <Monitor size={14} /> Follow system (light/dark)
+        </button>
       </section>
 
       <section className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-6 mt-6">
@@ -1314,10 +1524,10 @@ function SettingsView({ apiKey, setApiKey, model, setModel, provider, setProvide
         <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Display name</label>
         <div className="flex gap-2 mb-5">
           <input value={nameDraft} onChange={(e) => setNameDraft(e.target.value.slice(0, 24))}
-            className="flex-1 bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+            className="flex-1 bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
           <button onClick={() => setProfile((p) => ({ ...p, displayName: nameDraft.trim() || "Learner" }))}
             disabled={nameDraft === profile.displayName}
-            className="px-4 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400 disabled:opacity-30 disabled:cursor-not-allowed transition">
+            className="px-4 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-medium hover:bg-accent-400 disabled:opacity-30 disabled:cursor-not-allowed transition">
             Save
           </button>
         </div>
@@ -1328,8 +1538,8 @@ function SettingsView({ apiKey, setApiKey, model, setModel, provider, setProvide
             {profile.userId}
           </code>
           <button onClick={() => { navigator.clipboard.writeText(profile.userId); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
-            className="px-3 rounded-lg ring-1 ring-[color:var(--border)] text-[color:var(--text-dim)] hover:text-[color:var(--text)] hover:ring-emerald-500/40 transition">
-            {copied ? <Check size={15} className="text-emerald-500" /> : <Copy size={15} />}
+            className="px-3 rounded-lg ring-1 ring-[color:var(--border)] text-[color:var(--text-dim)] hover:text-[color:var(--text)] hover:ring-accent-500/40 transition">
+            {copied ? <Check size={15} className="text-accent-500" /> : <Copy size={15} />}
           </button>
         </div>
 
@@ -1339,7 +1549,7 @@ function SettingsView({ apiKey, setApiKey, model, setModel, provider, setProvide
             <p className="text-[11px] text-[color:var(--text-faint)] mt-0.5">Share your display name and stats publicly to compete with other learners.</p>
           </div>
           <button onClick={() => setProfile((p) => ({ ...p, leaderboardOptIn: !p.leaderboardOptIn }))}
-            className={`shrink-0 relative w-11 h-6 rounded-full transition ${profile.leaderboardOptIn ? "bg-emerald-500" : "bg-[color:var(--border)]"}`}>
+            className={`shrink-0 relative w-11 h-6 rounded-full transition ${profile.leaderboardOptIn ? "bg-accent-500" : "bg-[color:var(--border)]"}`}>
             <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${profile.leaderboardOptIn ? "translate-x-5" : ""}`} />
           </button>
         </div>
@@ -1352,13 +1562,13 @@ function SettingsView({ apiKey, setApiKey, model, setModel, provider, setProvide
         <div className="grid grid-cols-2 gap-3">
           <button onClick={() => setUiLang("en")}
             className={`flex flex-col items-center gap-1 py-4 rounded-lg ring-1 transition ${
-              uiLang === "en" ? "bg-emerald-500/15 ring-emerald-400/40 text-[color:var(--accent-text)]" : "ring-[color:var(--border)] text-[color:var(--text-dim)] hover:text-[color:var(--text)]"}`}>
+              uiLang === "en" ? "bg-accent-500/15 ring-accent-400/40 text-[color:var(--accent-text)]" : "ring-[color:var(--border)] text-[color:var(--text-dim)] hover:text-[color:var(--text)]"}`}>
             <span className="text-sm font-semibold">EN</span>
             <span className="text-[11px]">English native</span>
           </button>
           <button onClick={() => setUiLang("zh")}
             className={`flex flex-col items-center gap-1 py-4 rounded-lg ring-1 transition ${
-              uiLang === "zh" ? "bg-emerald-500/15 ring-emerald-400/40 text-[color:var(--accent-text)]" : "ring-[color:var(--border)] text-[color:var(--text-dim)] hover:text-[color:var(--text)]"}`}>
+              uiLang === "zh" ? "bg-accent-500/15 ring-accent-400/40 text-[color:var(--accent-text)]" : "ring-[color:var(--border)] text-[color:var(--text-dim)] hover:text-[color:var(--text)]"}`}>
             <span className="text-sm font-semibold">中文</span>
             <span className="text-[11px]">中文母语</span>
           </button>
@@ -1381,7 +1591,7 @@ function SettingsView({ apiKey, setApiKey, model, setModel, provider, setProvide
 }
 
 /* ---------------- Leaderboard ---------------- */
-function LeaderboardView({ profile, setProfile, uiLang, liveStats, setVocabTestResult }) {
+function LeaderboardView({ profile, setProfile, uiLang, liveStats, setVocabTestResult, onCreateList }) {
   const [tab, setTab] = useState("totalLearned");
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1403,7 +1613,7 @@ function LeaderboardView({ profile, setProfile, uiLang, liveStats, setVocabTestR
   const myRank = entries.findIndex((e) => e.id === profile.userId);
 
   if (showTest) {
-    return <VocabSizeTest uiLang={uiLang} onDone={() => { setProfile((p) => ({ ...p, leaderboardOptIn: true })); setShowTest(false); setTab("vocabSize"); }} onClose={() => setShowTest(false)} setVocabTestResult={setVocabTestResult} />;
+    return <VocabSizeTest uiLang={uiLang} onDone={() => { setProfile((p) => ({ ...p, leaderboardOptIn: true })); setShowTest(false); setTab("vocabSize"); }} onClose={() => setShowTest(false)} setVocabTestResult={setVocabTestResult} onCreateList={onCreateList} />;
   }
 
   return (
@@ -1419,10 +1629,10 @@ function LeaderboardView({ profile, setProfile, uiLang, liveStats, setVocabTestR
       </header>
 
       {!profile.leaderboardOptIn && (
-        <div className="mb-6 rounded-xl bg-emerald-500/10 ring-1 ring-emerald-500/30 p-4 flex items-center justify-between gap-4">
+        <div className="mb-6 rounded-xl bg-accent-500/10 ring-1 ring-accent-500/30 p-4 flex items-center justify-between gap-4">
           <p className="text-sm text-[color:var(--text)]">{isZh ? "加入排行榜，展示你的学习进度。" : "Join the leaderboard to show off your progress."}</p>
           <button onClick={() => setProfile((p) => ({ ...p, leaderboardOptIn: true }))}
-            className="shrink-0 px-4 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400 transition">
+            className="shrink-0 px-4 py-2 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-medium hover:bg-accent-400 transition">
             {isZh ? "加入" : "Join"}
           </button>
         </div>
@@ -1431,11 +1641,11 @@ function LeaderboardView({ profile, setProfile, uiLang, liveStats, setVocabTestR
       <div className="overflow-x-auto mb-6 -mx-1 px-1">
         <div className="flex gap-2 py-1">
           {LEADERBOARD_CATEGORIES.map((c) => {
-            const IconComp = { BookOpen, Award, Target, Flame }[c.icon];
+            const IconComp = { BookOpen, Award, Target, Flame, Sparkles }[c.icon];
             return (
               <button key={c.id} onClick={() => setTab(c.id)}
                 className={`shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-lg ring-1 text-sm font-medium transition ${
-                  tab === c.id ? "bg-emerald-500/15 ring-emerald-400/40 text-[color:var(--accent-text)]" : "ring-[color:var(--border)] text-[color:var(--text-dim)] hover:text-[color:var(--text)]"}`}>
+                  tab === c.id ? "bg-accent-500/15 ring-accent-400/40 text-[color:var(--accent-text)]" : "ring-[color:var(--border)] text-[color:var(--text-dim)] hover:text-[color:var(--text)]"}`}>
                 {IconComp && <IconComp size={14} />}
                 {isZh && c.id === "vocabSize" ? "词汇量" : c.label}
               </button>
@@ -1446,7 +1656,7 @@ function LeaderboardView({ profile, setProfile, uiLang, liveStats, setVocabTestR
 
       {tab === "vocabSize" && (
         <button onClick={() => setShowTest(true)}
-          className="w-full mb-6 flex items-center justify-between rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-4 hover:ring-emerald-500/40 transition text-left">
+          className="w-full mb-6 flex items-center justify-between rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-4 hover:ring-accent-500/40 transition text-left">
           <div>
             <p className="text-sm font-medium text-[color:var(--text)]">{isZh ? "测词汇量" : "Take the vocabulary size test"}</p>
             <p className="text-[11px] text-[color:var(--text-faint)] mt-0.5">{isZh ? "几分钟内估算你的词汇量" : "Estimate your vocabulary size in a few minutes"}</p>
@@ -1470,7 +1680,7 @@ function LeaderboardView({ profile, setProfile, uiLang, liveStats, setVocabTestR
                 : i === 2 ? { bg: "bg-gradient-to-br from-amber-600 to-amber-800", text: "text-amber-50" }
                 : null;
               return (
-                <li key={e.id} className={`flex items-center gap-3 px-4 py-3 ${e.id === profile.userId ? "bg-emerald-500/10" : ""}`}>
+                <li key={e.id} className={`flex items-center gap-3 px-4 py-3 ${e.id === profile.userId ? "bg-accent-500/10" : ""}`}>
                   <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
                     medal ? `${medal.bg} ${medal.text} shadow-sm` : "text-[color:var(--text-faint)]"}`}>
                     {i + 1}
@@ -1523,8 +1733,12 @@ function estimateVocabScore(hist, fStats) {
     estimate += delta * acc;
     prevPool = tier.pool;
   });
-  const fakeRate = fStats.asked ? fStats.falsePositive / fStats.asked : 0;
-  return { estimate: Math.max(0, Math.round(estimate * (1 - fakeRate))), level };
+  // Smoothed so a single early false-positive (very small sample) can't wipe out
+  // the whole estimate — the penalty only approaches the raw rate as more
+  // control words accumulate, and is capped well short of 100%.
+  const smoothedFakeRate = fStats.asked ? fStats.falsePositive / (fStats.asked + 2) : 0;
+  const penalty = Math.min(0.6, smoothedFakeRate);
+  return { estimate: Math.max(0, Math.round(estimate * (1 - penalty))), level };
 }
 
 function genWarmupQuestion(tierIdx, usedMap, isZh) {
@@ -1585,10 +1799,12 @@ function genQuestion(phase, tierIdx, usedMap, usedFakes, isZh, isFakeSlot) {
   return isFakeSlot ? genMCFake(usedFakes, tierIdx, isZh) : genMCReal(tierIdx, isZh, usedMap);
 }
 
-function VocabSizeTest({ uiLang, onDone, onClose, setVocabTestResult }) {
+function VocabSizeTest({ uiLang, onDone, onClose, setVocabTestResult, onCreateList }) {
   const isZh = uiLang === "zh";
   const noneLabel = isZh ? "以上都不是" : "None of these";
   const idkLabel = isZh ? "我不知道" : "I don't know";
+  const [selectedTopic, setSelectedTopic] = useState("mixed");
+  const [listBuilt, setListBuilt] = useState(false);
 
   const [phase, setPhase] = useState("warmup");
   const [tierIdx, setTierIdx] = useState(0);
@@ -1698,13 +1914,28 @@ function VocabSizeTest({ uiLang, onDone, onClose, setVocabTestResult }) {
         <span className="text-sm font-semibold text-[color:var(--text)]">{hasData ? `~${liveScore.estimate.toLocaleString()}` : "—"}</span>
       </div>
       <div className="h-1.5 rounded-full bg-[color:var(--border)] overflow-hidden">
-        <div className="h-full bg-emerald-500 transition-all" style={{ width: `${hasData ? Math.min(100, (liveScore.estimate / VOCAB_TEST_MAX_POOL) * 100) : 0}%` }} />
+        <div className="h-full bg-accent-500 transition-all" style={{ width: `${hasData ? Math.min(100, (liveScore.estimate / VOCAB_TEST_MAX_POOL) * 100) : 0}%` }} />
       </div>
     </div>
   );
 
   if (result !== null) {
     const examLabel = result.level ? (isZh ? `${result.level.id} · ${result.level.exam}` : `${result.level.id} (${result.level.exam})`) : (isZh ? "入门" : "Beginner");
+
+    if (listBuilt) {
+      return (
+        <div className="max-w-lg mx-auto px-4 sm:px-8 py-10 text-center">
+          <Trophy size={36} className="mx-auto text-amber-400 mb-4" />
+          <h2 className="text-xl font-semibold text-[color:var(--text)] mb-2">{isZh ? "你的专属词表已创建！" : "Your list is ready!"}</h2>
+          <p className="text-sm text-[color:var(--text-dim)] mb-8">{isZh ? "已切换到该词表，随时可以开始学习。" : "It's set as your active list — head to Learn whenever you're ready."}</p>
+          <button onClick={() => onDone(result.estimate)}
+            className="px-6 py-3 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-medium hover:bg-accent-400 transition">
+            {isZh ? "完成" : "Done"}
+          </button>
+        </div>
+      );
+    }
+
     return (
       <div className="max-w-lg mx-auto px-4 sm:px-8 py-10 text-center">
         <Target size={36} className="mx-auto text-[color:var(--accent-text)] mb-4" />
@@ -1712,9 +1943,47 @@ function VocabSizeTest({ uiLang, onDone, onClose, setVocabTestResult }) {
         <h2 className="text-4xl font-bold text-[color:var(--text)] mb-2">~{result.estimate.toLocaleString()}</h2>
         <p className="text-sm text-[color:var(--text-dim)] mb-1">{isZh ? "估计词汇量（单词）" : "estimated words known"}</p>
         <p className="text-xs text-[color:var(--accent-text)] mb-8">{isZh ? "阅读水平" : "Reading level"}: {examLabel}</p>
+
+        <div className="rounded-xl bg-gradient-to-br from-accent-500/10 to-teal-500/5 ring-1 ring-accent-500/25 p-5 text-left mb-6">
+          <p className="text-sm font-semibold text-[color:var(--text)] mb-1">
+            {isZh ? "我们保证：坚持一个月就能记住这份定制词表。" : "We guarantee you can memorize a custom list built for you — in one month."}
+          </p>
+          <p className="text-xs text-[color:var(--text-dim)] mb-4">
+            {isZh ? "选一个感兴趣的领域，或保持混合难度贴合你的水平。" : "Pick a field you care about, or keep it mixed at your tested level."}
+          </p>
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            <button onClick={() => setSelectedTopic("mixed")}
+              className={`text-left px-3 py-2 rounded-lg ring-1 text-xs font-medium transition ${
+                selectedTopic === "mixed" ? "bg-accent-500/15 ring-accent-400/40 text-[color:var(--accent-text)]" : "ring-[color:var(--border)] text-[color:var(--text-dim)] hover:text-[color:var(--text)]"}`}>
+              {isZh ? "混合（按你的水平）" : "Mixed (at your level)"}
+            </button>
+            {TOPIC_PACKS.map((t) => {
+              const IconComp = TOPIC_ICON_MAP[t.icon];
+              return (
+                <button key={t.id} onClick={() => setSelectedTopic(t.id)}
+                  className={`flex items-center gap-1.5 text-left px-3 py-2 rounded-lg ring-1 text-xs font-medium transition ${
+                    selectedTopic === t.id ? "bg-accent-500/15 ring-accent-400/40 text-[color:var(--accent-text)]" : "ring-[color:var(--border)] text-[color:var(--text-dim)] hover:text-[color:var(--text)]"}`}>
+                  {IconComp && <IconComp size={13} />}
+                  {isZh ? t.labelZh : t.label}
+                </button>
+              );
+            })}
+          </div>
+          <button onClick={() => {
+            const topic = TOPIC_PACKS.find((t) => t.id === selectedTopic);
+            const words = buildPersonalizedWordList(result.estimate, selectedTopic);
+            const name = topic ? `${isZh ? topic.labelZh : topic.label} · ${isZh ? "一月计划" : "1-Month Plan"}` : (isZh ? "我的一月词表计划" : "My 1-Month Vocab Plan");
+            onCreateList(words, name);
+            setListBuilt(true);
+          }}
+            className="w-full px-4 py-2.5 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 transition">
+            {isZh ? "生成我的词表" : "Build my list"}
+          </button>
+        </div>
+
         <button onClick={() => onDone(result.estimate)}
-          className="px-6 py-3 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400 transition">
-          {isZh ? "完成" : "Done"}
+          className="text-xs text-[color:var(--text-faint)] hover:text-[color:var(--text-dim)] transition">
+          {isZh ? "跳过，继续用我原来的词表" : "Skip — keep using my current list"}
         </button>
       </div>
     );
@@ -1734,7 +2003,7 @@ function VocabSizeTest({ uiLang, onDone, onClose, setVocabTestResult }) {
         <button onClick={onClose} className="text-[color:var(--text-faint)] hover:text-[color:var(--text)]"><X size={18} /></button>
       </div>
       <div className="h-1.5 rounded-full bg-[color:var(--border)] mb-4 overflow-hidden">
-        <div className="h-full bg-emerald-500 transition-all" style={{ width: `${progress}%` }} />
+        <div className="h-full bg-accent-500 transition-all" style={{ width: `${progress}%` }} />
       </div>
 
       <EstimateBar />
@@ -1743,7 +2012,7 @@ function VocabSizeTest({ uiLang, onDone, onClose, setVocabTestResult }) {
         <Clock size={13} />
         <span>{timeLeft}s</span>
         <div className="w-24 h-1 rounded-full bg-[color:var(--border)] overflow-hidden ml-1">
-          <div className={`h-full transition-all ${timeLeft <= 2 ? "bg-rose-500" : "bg-emerald-500"}`} style={{ width: `${timeProgress}%` }} />
+          <div className={`h-full transition-all ${timeLeft <= 2 ? "bg-rose-500" : "bg-accent-500"}`} style={{ width: `${timeProgress}%` }} />
         </div>
       </div>
 
@@ -1757,11 +2026,11 @@ function VocabSizeTest({ uiLang, onDone, onClose, setVocabTestResult }) {
               const isChosen = revealed && revealed.chosenAnswer === i;
               const cls = revealed
                 ? isCorrect
-                  ? "ring-emerald-500 bg-emerald-500/15 text-[color:var(--text)]"
+                  ? "ring-accent-500 bg-accent-500/15 text-[color:var(--text)]"
                   : isChosen
                     ? "ring-rose-500 bg-rose-500/10 text-[color:var(--text)]"
                     : "ring-[color:var(--border)] text-[color:var(--text-faint)] opacity-60"
-                : "ring-[color:var(--border)] text-[color:var(--text)] hover:ring-emerald-500/40 hover:bg-emerald-500/5";
+                : "ring-[color:var(--border)] text-[color:var(--text)] hover:ring-accent-500/40 hover:bg-accent-500/5";
               return (
                 <button key={i} disabled={!!revealed} onClick={() => submitAnswer(i)}
                   className={`text-left px-4 py-3 rounded-lg ring-1 text-sm transition ${cls}`}>
@@ -1774,11 +2043,11 @@ function VocabSizeTest({ uiLang, onDone, onClose, setVocabTestResult }) {
               const isChosen = revealed && revealed.chosenAnswer === "none";
               const cls = revealed
                 ? isCorrect
-                  ? "ring-emerald-500 bg-emerald-500/15 text-[color:var(--text)]"
+                  ? "ring-accent-500 bg-accent-500/15 text-[color:var(--text)]"
                   : isChosen
                     ? "ring-rose-500 bg-rose-500/10 text-[color:var(--text)]"
                     : "ring-[color:var(--border)] text-[color:var(--text-faint)] opacity-60"
-                : "ring-[color:var(--border)] text-[color:var(--text-dim)] hover:ring-emerald-500/40 hover:bg-emerald-500/5";
+                : "ring-[color:var(--border)] text-[color:var(--text-dim)] hover:ring-accent-500/40 hover:bg-accent-500/5";
               return (
                 <button disabled={!!revealed} onClick={() => submitAnswer("none")}
                   className={`text-left px-4 py-3 rounded-lg ring-1 text-sm italic transition ${cls}`}>
@@ -1805,7 +2074,7 @@ function VocabSizeTest({ uiLang, onDone, onClose, setVocabTestResult }) {
               {isZh ? "不认识" : "Don't know"}
             </button>
             <button onClick={() => submitAnswer(true)}
-              className="py-4 rounded-lg ring-1 ring-[color:var(--border)] text-sm font-medium text-[color:var(--text-dim)] hover:ring-emerald-500/40 hover:text-emerald-500 transition">
+              className="py-4 rounded-lg ring-1 ring-[color:var(--border)] text-sm font-medium text-[color:var(--text-dim)] hover:ring-accent-500/40 hover:text-accent-500 transition">
               {isZh ? "认识" : "Know it"}
             </button>
           </div>
@@ -1973,6 +2242,57 @@ async function searchDictionary(word, apiKey, model, provider) {
   const def = free?.def || extra?.def || "";
   if (!def && !extra) return null;
   return { word, def, chinese: extra?.chinese || "", vibe: extra?.vibe || "formal", coll: extra?.coll || "" };
+}
+
+// Real, corpus-sourced example sentences (Wiktionary quotations, via the free
+// dictionaryapi.dev). Best-effort — that service is occasionally flaky for a
+// given word (times out / 5xx), so callers must tolerate an empty result and
+// fall back to a synthesized sentence rather than break.
+async function fetchRealExamples(word) {
+  try {
+    const res = await fetch(`${LEADERBOARD_BASE}/dictionary-examples?word=${encodeURIComponent(word.trim().toLowerCase())}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data.examples) ? data.examples : [];
+  } catch { return []; }
+}
+
+// AI fallback for words the free dictionary has no real example for — only
+// used when the user has their own API key set, and only for the handful of
+// words that still came back empty after fetchExamplesBatch.
+async function fetchAiExamplesBatch(words, apiKey, model, provider) {
+  if (!words.length) return {};
+  const system = `You write natural example sentences for a vocabulary app. Given a list of English words (each with its register/"vibe"), write 2 realistic sentences per word that actually demonstrate its meaning in use — not a fill-in-the-blank template, real varied sentences a native speaker might write. Return ONLY valid JSON (no markdown, no preamble): an array with one object per word, same order: [{"word": string, "examples": [string, string]}]`;
+  const userText = words.map((w) => `${w.word} (${w.vibe || "formal"})`).join("\n");
+  try {
+    const raw = await callAI({ provider, apiKey, model, system, userText, maxTokens: Math.min(4000, words.length * 150) });
+    const parsed = extractJsonArray(raw);
+    const out = {};
+    if (Array.isArray(parsed)) {
+      parsed.forEach((p) => {
+        if (p?.word && Array.isArray(p.examples) && p.examples.length) out[p.word.trim().toLowerCase()] = p.examples;
+      });
+    }
+    return out;
+  } catch { return {}; }
+}
+
+async function fetchExamplesBatch(words, onProgress) {
+  const CONCURRENCY = 5;
+  const results = {};
+  let done = 0;
+  const queue = [...words];
+  const worker = async () => {
+    while (queue.length) {
+      const word = queue.shift();
+      const found = await fetchRealExamples(word);
+      if (found.length) results[word.trim().toLowerCase()] = found;
+      done++;
+      onProgress && onProgress(done, words.length);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, words.length) }, worker));
+  return results;
 }
 
 async function freeDictLookupBatch(words, onProgress) {
@@ -2374,7 +2694,7 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
               <p className="text-sm font-semibold text-[color:var(--text)]">{l.name}</p>
               <p className="text-xs text-[color:var(--text-faint)] mt-1">{l.words.length} words</p>
               <button onClick={() => addOfficialList(key)}
-                className="mt-4 w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-xs font-semibold hover:bg-emerald-400 transition">
+                className="mt-4 w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-accent-500 text-[#0a0e14] text-xs font-semibold hover:bg-accent-400 transition">
                 <Plus size={13} /> Add to my lists
               </button>
             </div>
@@ -2390,21 +2710,21 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
               <p className="text-xs text-[color:var(--text-dim)]">One word per line. Optionally add a definition after a colon or dash — e.g. <span className="font-mono">mitigate: to make less severe</span>.</p>
               <textarea value={importText} onChange={(e) => setImportText(e.target.value)} rows={6}
                 placeholder={"serendipity\nresilient: able to recover quickly\nobfuscate - to make unclear"}
-                className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50 font-mono resize-none" />
+                className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50 font-mono resize-none" />
               <div className="flex items-center gap-3 flex-wrap">
                 <button onClick={parseImport} disabled={!importText.trim()}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] text-[color:var(--text)] text-sm font-medium hover:ring-emerald-500/40 disabled:opacity-40 transition">
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] text-[color:var(--text)] text-sm font-medium hover:ring-accent-500/40 disabled:opacity-40 transition">
                   <Upload size={14} /> Parse words (fast)
                 </button>
                 <button onClick={runAiExtract} disabled={!importText.trim() || !apiKey || aiParsing}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 disabled:opacity-40 transition">
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 disabled:opacity-40 transition">
                   {aiParsing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
                   {aiParsing ? `Analyzing${aiProgress ? ` ${aiProgress.current}/${aiProgress.total}` : ""}…` : `Analyze with ${PROVIDERS[provider].short}`}
                 </button>
                 <span className="text-xs text-[color:var(--text-faint)]">or</span>
                 <input ref={fileRef} type="file" accept="application/pdf" className="hidden" onChange={handlePdfUpload} />
                 <button onClick={() => fileRef.current?.click()} disabled={pdfLoading || aiParsing}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] text-[color:var(--text)] text-sm font-medium hover:ring-emerald-500/40 disabled:opacity-50 transition">
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] text-[color:var(--text)] text-sm font-medium hover:ring-accent-500/40 disabled:opacity-50 transition">
                   {(pdfLoading || aiParsing) ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
                   {pdfLoading ? `Reading PDF${pdfProgress ? ` (page ${pdfProgress.current}/${pdfProgress.total})` : ""}…`
                     : aiParsing ? `Scanning for vocab${aiProgress ? ` ${aiProgress.current}/${aiProgress.total}` : ""}…`
@@ -2426,13 +2746,13 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
                 <button onClick={() => { setPreview(null); setPlanDraft(null); }} className="text-xs text-[color:var(--text-faint)] hover:text-[color:var(--text)]">Start over</button>
               </div>
               <input value={importName} onChange={(e) => setImportName(e.target.value)} placeholder="List name (optional)"
-                className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+                className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
 
               {preview.some((w) => !w.def) && (
-                <div className="flex items-center justify-between rounded-lg bg-emerald-500/5 ring-1 ring-emerald-500/20 px-4 py-2.5">
+                <div className="flex items-center justify-between rounded-lg bg-accent-500/5 ring-1 ring-accent-500/20 px-4 py-2.5">
                   <p className="text-xs text-[color:var(--text-dim)]">{preview.filter((w) => !w.def).length} word(s) missing a definition.</p>
                   <button onClick={fillMissingDefs} disabled={!!filling}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-xs font-semibold hover:bg-emerald-400 disabled:opacity-40 transition shrink-0">
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-500 text-[#0a0e14] text-xs font-semibold hover:bg-accent-400 disabled:opacity-40 transition shrink-0">
                     {filling ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
                     {filling
                       ? (filling.phase === "ai" ? `Asking ${PROVIDERS[provider].short} for the rest…` : filling.total > 1 ? `Looking up ${filling.current}/${filling.total}…` : "Looking up definitions…")
@@ -2488,7 +2808,7 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
               </div>
 
               <button onClick={createImportedList}
-                className="w-full flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 transition">
+                className="w-full flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 transition">
                 <Check size={15} /> Create list
               </button>
             </>
@@ -2505,7 +2825,7 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
             const editing = editingPlanId === l.id;
             return (
               <div key={l.id} className={`rounded-xl ring-1 transition ${
-                active ? "bg-emerald-500/10 ring-emerald-500/40" : "bg-[color:var(--surface)] ring-[color:var(--border)]"}`}>
+                active ? "bg-accent-500/10 ring-accent-500/40" : "bg-[color:var(--surface)] ring-[color:var(--border)]"}`}>
                 <div className="flex items-center gap-4 px-5 py-4">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-[color:var(--text)]">{l.name} {active && <span className="text-[10px] uppercase tracking-wide text-[color:var(--accent-text)] ml-1">studying</span>}</p>
@@ -2548,7 +2868,7 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
                         <div className="flex gap-2">
                           <button onClick={() => setEditPlanDraft(null)} className="text-[11px] text-[color:var(--text-faint)] hover:text-[color:var(--text)] px-2">No plan (study all at once)</button>
                           <button onClick={() => savePlanEdit(l.id)}
-                            className="px-3 py-1.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-xs font-semibold hover:bg-emerald-400">Save</button>
+                            className="px-3 py-1.5 rounded-lg bg-accent-500 text-[#0a0e14] text-xs font-semibold hover:bg-accent-400">Save</button>
                         </div>
                       </div>
                     </div>
@@ -2561,7 +2881,7 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
                       <button onClick={() => setEditPlanDraft(suggestPlan(l.words.length) || { newPerDay: 5, reviewPerDay: 10 })}
                         className="text-[11px] text-sky-700 dark:text-sky-300 hover:underline">Add a daily plan</button>
                       <button onClick={() => savePlanEdit(l.id)}
-                        className="px-3 py-1.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-xs font-semibold hover:bg-emerald-400">Save</button>
+                        className="px-3 py-1.5 rounded-lg bg-accent-500 text-[#0a0e14] text-xs font-semibold hover:bg-accent-400">Save</button>
                     </div>
                   </div>
                 )}
@@ -2634,11 +2954,11 @@ function Deck({ list, lists, activeListId, setActiveListId, updateList, onOpen, 
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setFocusMode(true)} title="Focus mode — add words full screen"
-            className="flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-lg bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] text-[color:var(--text)] text-sm font-medium hover:ring-emerald-500/40 transition">
+            className="flex items-center gap-1.5 px-3 sm:px-3.5 py-2 rounded-lg bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] text-[color:var(--text)] text-sm font-medium hover:ring-accent-500/40 transition">
             <Expand size={15} /> <span className="hidden sm:inline">Focus mode</span>
           </button>
           <button onClick={() => setOpen((o) => !o)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400 transition">
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-medium hover:bg-accent-400 transition">
             <Plus size={16} /> Add word
           </button>
         </div>
@@ -2660,21 +2980,21 @@ function Deck({ list, lists, activeListId, setActiveListId, updateList, onOpen, 
             <div>
               <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Word</label>
               <input value={form.word} onChange={(e) => setForm({ ...form, word: e.target.value })}
-                className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+                className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
             </div>
             <div>
               <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Tone / Vibe</label>
               <select value={form.vibe} onChange={(e) => setForm({ ...form, vibe: e.target.value })}
-                className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50">
+                className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50">
                 {["formal", "academic", "casual", "literary"].map((v) => <option key={v}>{v}</option>)}
               </select>
             </div>
           </div>
 
-          <div className="flex items-center justify-between rounded-lg bg-emerald-500/5 ring-1 ring-emerald-500/20 px-4 py-2.5">
+          <div className="flex items-center justify-between rounded-lg bg-accent-500/5 ring-1 ring-accent-500/20 px-4 py-2.5">
             <p className="text-xs text-[color:var(--text-dim)]">Type a word, then look up its definition{apiKey ? `, vibe & collocations via ${PROVIDERS[provider].short}` : " (free, no API key needed)"}.</p>
             <button onClick={lookup} disabled={looking || !form.word.trim()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-xs font-semibold hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition shrink-0">
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-500 text-[#0a0e14] text-xs font-semibold hover:bg-accent-400 disabled:opacity-40 disabled:cursor-not-allowed transition shrink-0">
               {looking ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
               {looking ? "Searching…" : "Auto-fill"}
             </button>
@@ -2685,19 +3005,19 @@ function Deck({ list, lists, activeListId, setActiveListId, updateList, onOpen, 
             <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Definition</label>
             <textarea value={form.def} onChange={(e) => setForm({ ...form, def: e.target.value })} rows={2}
               placeholder="Write it yourself, or auto-fill above."
-              className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50 resize-none" />
+              className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50 resize-none" />
           </div>
           <div>
             <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Core collocations</label>
             <input value={form.coll} onChange={(e) => setForm({ ...form, coll: e.target.value })}
               placeholder="e.g. mitigate risk, mitigate the impact"
-              className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+              className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
           </div>
           <div className="flex gap-2 justify-end">
             <button onClick={() => { setOpen(false); setForm(empty); setLookupErr(null); }}
               className="px-4 py-2 rounded-lg text-sm text-[color:var(--text-dim)] hover:text-[color:var(--text)]">Cancel</button>
             <button onClick={add}
-              className="px-4 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400">Save word</button>
+              className="px-4 py-2 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-medium hover:bg-accent-400">Save word</button>
           </div>
         </div>
       )}
@@ -2705,7 +3025,7 @@ function Deck({ list, lists, activeListId, setActiveListId, updateList, onOpen, 
       <div className="space-y-2 stagger">
         {list.words.map((w) => (
           <div key={w.id} onClick={() => onOpen(w)}
-            className="group flex items-center gap-4 rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] px-5 py-4 hover:ring-emerald-500/40 hover:-translate-y-0.5 cursor-pointer transition-all duration-200">
+            className="group flex items-center gap-4 rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] px-5 py-4 hover:ring-accent-500/40 hover:-translate-y-0.5 cursor-pointer transition-all duration-200">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2.5 mb-1">
                 <span className="text-base font-semibold text-[color:var(--text)]">{w.word}</span>
@@ -2741,11 +3061,11 @@ function Deck({ list, lists, activeListId, setActiveListId, updateList, onOpen, 
 
             <div className="flex items-center gap-3 mb-8 flex-wrap">
               <select value={form.vibe} onChange={(e) => setForm({ ...form, vibe: e.target.value })}
-                className="bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50">
+                className="bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50">
                 {["formal", "academic", "casual", "literary"].map((v) => <option key={v}>{v}</option>)}
               </select>
               <button onClick={lookup} disabled={looking || !form.word.trim()}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition">
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 disabled:opacity-40 disabled:cursor-not-allowed transition">
                 {looking ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
                 {looking ? "Searching…" : "Auto-fill"}
               </button>
@@ -2762,11 +3082,11 @@ function Deck({ list, lists, activeListId, setActiveListId, updateList, onOpen, 
 
             <div className="mt-auto flex items-center justify-end gap-3 pt-6">
               <button onClick={addAndContinue} disabled={!form.word.trim() || !form.def.trim()}
-                className="px-5 py-3 rounded-lg ring-1 ring-[color:var(--border)] text-[color:var(--text)] text-sm font-medium hover:ring-emerald-500/40 disabled:opacity-40 transition">
+                className="px-5 py-3 rounded-lg ring-1 ring-[color:var(--border)] text-[color:var(--text)] text-sm font-medium hover:ring-accent-500/40 disabled:opacity-40 transition">
                 Save & add another
               </button>
               <button onClick={add} disabled={!form.word.trim() || !form.def.trim()}
-                className="px-6 py-3 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 disabled:opacity-40 transition">
+                className="px-6 py-3 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 disabled:opacity-40 transition">
                 Save & close
               </button>
             </div>
@@ -2786,7 +3106,7 @@ function WordDetailPage({ listId, wordId, lists, onBack }) {
     return (
       <div className="max-w-2xl mx-auto px-4 sm:px-8 py-10 sm:py-16 text-center">
         <p className="text-sm text-[color:var(--text-dim)] mb-4">That word couldn't be found.</p>
-        <button onClick={onBack} className="px-4 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400">Go back</button>
+        <button onClick={onBack} className="px-4 py-2 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-medium hover:bg-accent-400">Go back</button>
       </div>
     );
   }
@@ -2804,7 +3124,10 @@ function WordDetailPage({ listId, wordId, lists, onBack }) {
       <div className="text-center mb-10">
         <span className="text-3xl">{VIBE_EMOJI[word.vibe] || "✨"}</span>
         <p className="text-xs uppercase tracking-widest text-[color:var(--accent-text)] mt-2">{word.vibe}</p>
-        <h1 className="text-3xl sm:text-5xl font-bold text-[color:var(--text)] mt-2 break-words">{word.word}</h1>
+        <h1 className="text-3xl sm:text-5xl font-bold text-[color:var(--text)] mt-2 break-words inline-flex items-center gap-2">
+          {word.word}
+          <AudioPronunciationButton word={word.word} size={22} className="align-middle" />
+        </h1>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
@@ -2837,7 +3160,7 @@ function WordDetailPage({ listId, wordId, lists, onBack }) {
             <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-dim)] mb-2">Core collocations</p>
             <div className="flex flex-wrap gap-2">
               {coll.map((c, i) => (
-                <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 text-[color:var(--accent-text)] ring-1 ring-emerald-500/30">{c}</span>
+                <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-accent-500/15 text-[color:var(--accent-text)] ring-1 ring-accent-500/30">{c}</span>
               ))}
             </div>
           </div>
@@ -2874,7 +3197,7 @@ function LearnCard({ word, style, revealed, onReveal }) {
     return (
       <div>
         <p className="text-xs uppercase tracking-wide text-[color:var(--text-faint)] mb-2">Read & remember</p>
-        <h3 className="text-4xl font-bold text-[color:var(--text)] mb-3">{word.word}</h3>
+        <h3 className="text-4xl font-bold text-[color:var(--text)] mb-3 inline-flex items-center gap-2">{word.word}<AudioPronunciationButton word={word.word} size={18} /></h3>
         <p className="text-lg text-[color:var(--text)] mb-4 leading-relaxed">{word.def}</p>
         <div className="space-y-2 mb-4">
           {examples.slice(0, 2).map((s, i) => (
@@ -2883,7 +3206,7 @@ function LearnCard({ word, style, revealed, onReveal }) {
         </div>
         {coll.length > 0 && (
           <div className="flex flex-wrap gap-2">
-            {coll.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 text-[color:var(--accent-text)] ring-1 ring-emerald-500/30">{c}</span>)}
+            {coll.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-accent-500/15 text-[color:var(--accent-text)] ring-1 ring-accent-500/30">{c}</span>)}
           </div>
         )}
       </div>
@@ -2897,15 +3220,15 @@ function LearnCard({ word, style, revealed, onReveal }) {
         <p className="text-lg text-[color:var(--text)] mb-2 leading-relaxed">{examples[0].replace(new RegExp(word.word, "i"), "____")}</p>
         <p className="text-xs text-[color:var(--text-faint)] mb-4">Hint: {word.def}</p>
         {!revealed ? (
-          <button onClick={onReveal} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 transition">
+          <button onClick={onReveal} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 transition">
             <Sparkles size={14} /> Show the word
           </button>
         ) : (
           <div className="mt-2">
-            <h3 className="text-3xl font-bold text-[color:var(--accent-text)] mb-2">{word.word}</h3>
+            <h3 className="text-3xl font-bold text-[color:var(--accent-text)] mb-2 inline-flex items-center gap-2">{word.word}<AudioPronunciationButton word={word.word} size={18} /></h3>
             {coll.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-2">
-                {coll.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 text-[color:var(--accent-text)] ring-1 ring-emerald-500/30">{c}</span>)}
+                {coll.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-accent-500/15 text-[color:var(--accent-text)] ring-1 ring-accent-500/30">{c}</span>)}
               </div>
             )}
           </div>
@@ -2918,9 +3241,9 @@ function LearnCard({ word, style, revealed, onReveal }) {
   return (
     <div className="text-center">
       <p className="text-xs uppercase tracking-wide text-[color:var(--text-faint)] mb-2">Recall first, then check</p>
-      <h3 className="text-4xl font-bold text-[color:var(--text)] mb-4">{word.word}</h3>
+      <h3 className="text-4xl font-bold text-[color:var(--text)] mb-4 inline-flex items-center gap-2">{word.word}<AudioPronunciationButton word={word.word} size={18} /></h3>
       {!revealed ? (
-        <button onClick={onReveal} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 transition">
+        <button onClick={onReveal} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 transition">
           <Sparkles size={14} /> Reveal definition
         </button>
       ) : (
@@ -2929,7 +3252,7 @@ function LearnCard({ word, style, revealed, onReveal }) {
           <p className="text-sm text-[color:var(--text-dim)] italic leading-relaxed">{examples[0]}</p>
           {coll.length > 0 && (
             <div className="flex flex-wrap gap-2">
-              {coll.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 text-[color:var(--accent-text)] ring-1 ring-emerald-500/30">{c}</span>)}
+              {coll.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-accent-500/15 text-[color:var(--accent-text)] ring-1 ring-accent-500/30">{c}</span>)}
             </div>
           )}
         </div>
@@ -3011,7 +3334,7 @@ function MemorizeSession({ list, pool, updateList, setStats, registerActivity, o
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
           {pool.map((w) => (
             <button key={w.id} onClick={() => onOpenDetail(list.id, w.id)}
-              className="text-left rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-4 hover:ring-emerald-500/40 transition">
+              className="text-left rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-4 hover:ring-accent-500/40 transition">
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-lg">{VIBE_EMOJI[w.vibe] || "✨"}</span>
                 <span className="text-sm font-semibold text-[color:var(--text)]">{w.word}</span>
@@ -3023,11 +3346,11 @@ function MemorizeSession({ list, pool, updateList, setStats, registerActivity, o
 
         <div className="flex gap-3">
           <button onClick={() => setView("quiz")}
-            className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-[#0a0e14] font-semibold hover:from-emerald-400 hover:to-teal-400 transition">
+            className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-gradient-to-r from-accent-500 to-teal-500 text-[#0a0e14] font-semibold hover:from-accent-400 hover:to-teal-400 transition">
             <Zap size={15} /> Test these words now
           </button>
           <button onClick={onExit}
-            className="px-4 py-2.5 rounded-lg bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] text-[color:var(--text)] text-sm font-medium hover:ring-emerald-500/40 transition">
+            className="px-4 py-2.5 rounded-lg bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] text-[color:var(--text)] text-sm font-medium hover:ring-accent-500/40 transition">
             Back to Learn
           </button>
         </div>
@@ -3040,7 +3363,7 @@ function MemorizeSession({ list, pool, updateList, setStats, registerActivity, o
     return (
       <div className="max-w-2xl mx-auto px-4 sm:px-8 py-10 sm:py-16 text-center">
         <p className="text-sm text-[color:var(--text-dim)] mb-4">Nothing left to memorize in this batch right now.</p>
-        <button onClick={onExit} className="px-4 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400">Back to Learn</button>
+        <button onClick={onExit} className="px-4 py-2 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-medium hover:bg-accent-400">Back to Learn</button>
       </div>
     );
   }
@@ -3068,11 +3391,11 @@ function MemorizeSession({ list, pool, updateList, setStats, registerActivity, o
         <p className="text-xs text-[color:var(--text-faint)]">{doneCount}/{pool.length} at 100%</p>
       </div>
       <div className="h-1.5 rounded-full bg-[color:var(--surface2)] mb-8 overflow-hidden">
-        <div className="h-full bg-emerald-500 transition-all" style={{ width: `${(doneCount / pool.length) * 100}%` }} />
+        <div className="h-full bg-accent-500 transition-all" style={{ width: `${(doneCount / pool.length) * 100}%` }} />
       </div>
 
       <div className="rounded-2xl overflow-hidden bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] min-h-[360px] flex flex-col">
-        <div className="px-8 py-7 bg-gradient-to-br from-teal-500/25 via-emerald-500/15 to-transparent border-b border-[color:var(--border)]">
+        <div className="px-8 py-7 bg-gradient-to-br from-teal-500/25 via-accent-500/15 to-transparent border-b border-[color:var(--border)]">
           <div className="flex items-center justify-between mb-3">
             <span className="text-2xl">{VIBE_EMOJI[word.vibe] || "✨"}</span>
             <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-black/10 dark:bg-white/10 text-[color:var(--text)]">{cur.memRate}% memorized</span>
@@ -3085,7 +3408,7 @@ function MemorizeSession({ list, pool, updateList, setStats, registerActivity, o
           {!showDetails ? (
             <div className="text-center py-6">
               <button onClick={() => setShowDetails(true)}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 transition">
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 transition">
                 <Sparkles size={14} /> Show definition & details
               </button>
             </div>
@@ -3104,7 +3427,7 @@ function MemorizeSession({ list, pool, updateList, setStats, registerActivity, o
               )}
               {coll.length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                  {coll.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 text-[color:var(--accent-text)] ring-1 ring-emerald-500/30">{c}</span>)}
+                  {coll.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-accent-500/15 text-[color:var(--accent-text)] ring-1 ring-accent-500/30">{c}</span>)}
                 </div>
               )}
             </div>
@@ -3128,7 +3451,7 @@ function MemorizeSession({ list, pool, updateList, setStats, registerActivity, o
                 <span className="block text-[10px] opacity-70 mt-0.5">→ {previewRate("blurry")}%</span>
               </button>
               <button onClick={() => rate("know")}
-                className="flex-1 py-2.5 rounded-lg text-sm font-medium ring-1 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-emerald-500/30 hover:bg-emerald-500/15 transition">
+                className="flex-1 py-2.5 rounded-lg text-sm font-medium ring-1 bg-accent-500/10 text-accent-700 dark:text-accent-300 ring-accent-500/30 hover:bg-accent-500/15 transition">
                 <span className="block">I remember it</span>
                 <span className="block text-[10px] opacity-70 mt-0.5">{previewRate("know") >= 100 ? "mastered!" : `→ ${previewRate("know")}%`}</span>
               </button>
@@ -3228,7 +3551,7 @@ function LearnView({ list, updateList, setStats, registerActivity, onOpenDetail,
           {LEARN_MODES.map((m) => (
             <button key={m.id} onClick={() => setMode(m.id)}
               className={`text-left rounded-xl ring-1 p-4 transition ${
-                mode === m.id ? "bg-emerald-500/10 ring-emerald-500/40" : "bg-[color:var(--surface)] ring-[color:var(--border)] hover:ring-emerald-500/20"}`}>
+                mode === m.id ? "bg-accent-500/10 ring-accent-500/40" : "bg-[color:var(--surface)] ring-[color:var(--border)] hover:ring-accent-500/20"}`}>
               <p className={`text-sm font-semibold ${mode === m.id ? "text-[color:var(--accent-text)]" : "text-[color:var(--text)]"}`}>{m.label}</p>
               <p className="text-xs text-[color:var(--text-faint)] mt-1">{m.desc}</p>
             </button>
@@ -3254,9 +3577,9 @@ function LearnView({ list, updateList, setStats, registerActivity, onOpenDetail,
                 return (
                   <button key={s.id} onClick={() => toggleStyle(s.id)}
                     className={`w-full flex items-start gap-3 px-3 py-2.5 rounded-lg ring-1 text-left transition ${
-                      on ? "bg-emerald-500/10 ring-emerald-500/40" : "ring-[color:var(--border)] hover:ring-emerald-500/20"}`}>
+                      on ? "bg-accent-500/10 ring-accent-500/40" : "ring-[color:var(--border)] hover:ring-accent-500/20"}`}>
                     <div className={`mt-0.5 h-4 w-4 rounded flex items-center justify-center shrink-0 transition ${
-                      on ? "bg-emerald-500" : "ring-1 ring-[color:var(--text-faint)]"}`}>
+                      on ? "bg-accent-500" : "ring-1 ring-[color:var(--text-faint)]"}`}>
                       {on && <Check size={12} className="text-[#0a0e14]" strokeWidth={3} />}
                     </div>
                     <div>
@@ -3280,7 +3603,7 @@ function LearnView({ list, updateList, setStats, registerActivity, onOpenDetail,
         )}
 
         <button onClick={start} disabled={!activePending.length}
-          className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-[#0a0e14] font-semibold hover:from-emerald-400 hover:to-teal-400 disabled:opacity-40 transition">
+          className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-gradient-to-r from-accent-500 to-teal-500 text-[#0a0e14] font-semibold hover:from-accent-400 hover:to-teal-400 disabled:opacity-40 transition">
           <GraduationCap size={16} /> Start learning
         </button>
         {!activePending.length && (
@@ -3302,7 +3625,7 @@ function LearnView({ list, updateList, setStats, registerActivity, onOpenDetail,
           <p className="text-xs text-[color:var(--text-faint)]">{idx + 1}/{sessionPool.length}</p>
         </div>
         <div className="h-1.5 rounded-full bg-[color:var(--surface2)] mb-8 overflow-hidden">
-          <div className="h-full bg-emerald-500 transition-all" style={{ width: `${((idx + 1) / sessionPool.length) * 100}%` }} />
+          <div className="h-full bg-accent-500 transition-all" style={{ width: `${((idx + 1) / sessionPool.length) * 100}%` }} />
         </div>
 
         <div className="rounded-2xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-8 min-h-[280px] flex flex-col justify-between">
@@ -3314,7 +3637,7 @@ function LearnView({ list, updateList, setStats, registerActivity, onOpenDetail,
           </div>
           {(style === "story" || revealed) && (
             <button onClick={next}
-              className="mt-6 w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 transition">
+              className="mt-6 w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 transition">
               {idx + 1 >= sessionPool.length ? "Finish" : "Got it — next"} <ChevronRight size={15} />
             </button>
           )}
@@ -3335,7 +3658,7 @@ function LearnView({ list, updateList, setStats, registerActivity, onOpenDetail,
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
         {sessionPool.map((w) => (
           <button key={w.id} onClick={() => onOpenDetail(list.id, w.id)}
-            className="text-left rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-4 hover:ring-emerald-500/40 transition">
+            className="text-left rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-4 hover:ring-accent-500/40 transition">
             <div className="flex items-center gap-2 mb-1">
               <span className="text-lg">{VIBE_EMOJI[w.vibe] || "✨"}</span>
               <span className="text-sm font-semibold text-[color:var(--text)]">{w.word}</span>
@@ -3347,11 +3670,11 @@ function LearnView({ list, updateList, setStats, registerActivity, onOpenDetail,
 
       <div className="flex gap-3">
         <button onClick={() => setView("quiz")}
-          className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-[#0a0e14] font-semibold hover:from-emerald-400 hover:to-teal-400 transition">
+          className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-gradient-to-r from-accent-500 to-teal-500 text-[#0a0e14] font-semibold hover:from-accent-400 hover:to-teal-400 transition">
           <Zap size={15} /> Test these words now
         </button>
         <button onClick={() => setView("dashboard")}
-          className="px-4 py-2.5 rounded-lg bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] text-[color:var(--text)] text-sm font-medium hover:ring-emerald-500/40 transition">
+          className="px-4 py-2.5 rounded-lg bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] text-[color:var(--text)] text-sm font-medium hover:ring-accent-500/40 transition">
           Back to dashboard
         </button>
       </div>
@@ -3519,7 +3842,7 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity, onOp
           {QUIZ_MODES.map((m) => (
             <button key={m.id} onClick={() => setMode(m.id)}
               className={`text-left rounded-xl ring-1 p-4 transition ${
-                mode === m.id ? "bg-emerald-500/10 ring-emerald-500/40" : "bg-[color:var(--surface)] ring-[color:var(--border)] hover:ring-emerald-500/20"}`}>
+                mode === m.id ? "bg-accent-500/10 ring-accent-500/40" : "bg-[color:var(--surface)] ring-[color:var(--border)] hover:ring-accent-500/20"}`}>
               <p className={`text-sm font-semibold ${mode === m.id ? "text-[color:var(--accent-text)]" : "text-[color:var(--text)]"}`}>{m.label}</p>
               <p className="text-xs text-[color:var(--text-faint)] mt-1">{m.desc}</p>
             </button>
@@ -3541,9 +3864,9 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity, onOp
                 return (
                   <button key={s.id} onClick={() => toggleStyle(s.id)}
                     className={`w-full flex items-start gap-3 px-3 py-2.5 rounded-lg ring-1 text-left transition ${
-                      on ? "bg-emerald-500/10 ring-emerald-500/40" : "ring-[color:var(--border)] hover:ring-emerald-500/20"}`}>
+                      on ? "bg-accent-500/10 ring-accent-500/40" : "ring-[color:var(--border)] hover:ring-accent-500/20"}`}>
                     <div className={`mt-0.5 h-4 w-4 rounded flex items-center justify-center shrink-0 transition ${
-                      on ? "bg-emerald-500" : "ring-1 ring-[color:var(--text-faint)]"}`}>
+                      on ? "bg-accent-500" : "ring-1 ring-[color:var(--text-faint)]"}`}>
                       {on && <Check size={12} className="text-[#0a0e14]" strokeWidth={3} />}
                     </div>
                     <div>
@@ -3558,7 +3881,7 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity, onOp
         )}
 
         <button onClick={start} disabled={!activePending.length}
-          className="btn-pulse inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-[#0a0e14] font-semibold hover:from-emerald-400 hover:to-teal-400 disabled:opacity-40 disabled:animate-none transition">
+          className="btn-pulse inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-gradient-to-r from-accent-500 to-teal-500 text-[#0a0e14] font-semibold hover:from-accent-400 hover:to-teal-400 disabled:opacity-40 disabled:animate-none transition">
           <Sparkles size={16} /> {mode === "deep" ? "Start deep review" : "Start quick test"}
         </button>
       </div>
@@ -3574,7 +3897,7 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity, onOp
           <p className="text-xs text-[color:var(--text-faint)]">{doneCount}/{pool.length} mastered this round</p>
         </div>
         <div className="h-1.5 rounded-full bg-[color:var(--surface2)] mb-8 overflow-hidden">
-          <div className="h-full bg-emerald-500 transition-all" style={{ width: `${(doneCount / pool.length) * 100}%` }} />
+          <div className="h-full bg-accent-500 transition-all" style={{ width: `${(doneCount / pool.length) * 100}%` }} />
         </div>
 
         <div key={current.id + question.type} className="rounded-2xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-8 animate-fade-up">
@@ -3608,7 +3931,7 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity, onOp
 
           {(question.type === "word2def" || question.type === "def2word") && !feedback && (
             <button onClick={() => submit(chosen)} disabled={chosen === null}
-              className="mt-4 w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 disabled:opacity-40 transition">
+              className="mt-4 w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 disabled:opacity-40 transition">
               <Check size={15} /> Submit answer
             </button>
           )}
@@ -3621,15 +3944,15 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity, onOp
               <input value={textAnswer} onChange={(e) => setTextAnswer(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && textAnswer.trim() && submit(textAnswer)}
                 disabled={!!feedback} placeholder="Type the word…"
-                className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+                className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
               {!feedback && (
                 <button onClick={() => submit(textAnswer)} disabled={!textAnswer.trim()}
-                  className="mt-3 px-4 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400 disabled:opacity-40 transition">
+                  className="mt-3 px-4 py-2 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-medium hover:bg-accent-400 disabled:opacity-40 transition">
                   Submit answer
                 </button>
               )}
               {feedback && (
-                <p className={`mt-3 text-sm ${feedback.correct ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300"}`}>
+                <p className={`mt-3 text-sm ${feedback.correct ? "text-accent-700 dark:text-accent-300" : "text-rose-700 dark:text-rose-300"}`}>
                   {feedback.correct ? "Correct!" : `Not quite — the answer is "${feedback.answer}".`}
                 </p>
               )}
@@ -3637,7 +3960,7 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity, onOp
           )}
 
           {feedback && (
-            <button onClick={next} className="mt-6 w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] text-[color:var(--text)] text-sm font-medium hover:ring-emerald-500/40 transition">
+            <button onClick={next} className="mt-6 w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] text-[color:var(--text)] text-sm font-medium hover:ring-accent-500/40 transition">
               Next <ChevronRight size={15} />
             </button>
           )}
@@ -3660,7 +3983,7 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity, onOp
               <div key={w.id} className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] px-5 py-4">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-base font-semibold text-[color:var(--text)]">{w.word}</span>
-                  <span className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full ${nailed ? "bg-emerald-500/15 text-[color:var(--accent-text)]" : "bg-amber-500/15 text-amber-700 dark:text-amber-300"}`}>
+                  <span className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full ${nailed ? "bg-accent-500/15 text-[color:var(--accent-text)]" : "bg-amber-500/15 text-amber-700 dark:text-amber-300"}`}>
                     {nailed ? "nailed it" : "needs practice"}
                   </span>
                 </div>
@@ -3670,7 +3993,7 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity, onOp
           })}
         </div>
         <button onClick={finishSession}
-          className="w-full flex items-center justify-center gap-1.5 px-4 py-3 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-[#0a0e14] font-semibold hover:from-emerald-400 hover:to-teal-400 transition">
+          className="w-full flex items-center justify-center gap-1.5 px-4 py-3 rounded-lg bg-gradient-to-r from-accent-500 to-teal-500 text-[#0a0e14] font-semibold hover:from-accent-400 hover:to-teal-400 transition">
           <Check size={16} /> Save & finish
         </button>
       </div>
@@ -3685,7 +4008,7 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity, onOp
         <h2 className="text-2xl font-semibold text-[color:var(--text)] mb-2">Session saved!</h2>
         <p className="text-sm text-[color:var(--text-dim)] mb-8">Your progress on these words has been updated. Come back tomorrow for the next round.</p>
         <button onClick={() => setPhase("home")}
-          className="px-5 py-2.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400 transition">
+          className="px-5 py-2.5 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-medium hover:bg-accent-400 transition">
           Back to test menu
         </button>
       </div>
@@ -3696,13 +4019,13 @@ function QuizView({ list, allWords, updateList, setStats, registerActivity, onOp
 }
 
 function ChoiceButton({ label, selected, feedback, isAnswer, onClick }) {
-  let style = "ring-[color:var(--border)] text-[color:var(--text)] hover:ring-emerald-500/40";
+  let style = "ring-[color:var(--border)] text-[color:var(--text)] hover:ring-accent-500/40";
   if (feedback) {
-    if (isAnswer) style = "ring-emerald-500/50 bg-emerald-500/15 text-[color:var(--accent-text)]";
+    if (isAnswer) style = "ring-accent-500/50 bg-accent-500/15 text-[color:var(--accent-text)]";
     else if (selected) style = "ring-rose-500/50 bg-rose-500/15 text-rose-700 dark:text-rose-300";
     else style = "ring-[color:var(--border)] text-[color:var(--text-faint)] opacity-60";
   } else if (selected) {
-    style = "ring-emerald-500/50 bg-emerald-500/10 text-[color:var(--text)]";
+    style = "ring-accent-500/50 bg-accent-500/10 text-[color:var(--text)]";
   }
   return (
     <button onClick={onClick} disabled={!!feedback}
@@ -3793,10 +4116,10 @@ function SearchView({ activeList, updateList, apiKey, model, provider, onOpenDet
               onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
               onKeyDown={(e) => e.key === "Enter" && runSearch(query)}
               placeholder="Type a word…" autoFocus
-              className="w-full bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] rounded-lg pl-9 pr-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+              className="w-full bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] rounded-lg pl-9 pr-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
           </div>
           <button onClick={() => runSearch(query)} disabled={loading || !query.trim()}
-            className="px-4 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400 disabled:opacity-40 transition flex items-center gap-1.5">
+            className="px-4 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-medium hover:bg-accent-400 disabled:opacity-40 transition flex items-center gap-1.5">
             {loading ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
             Search
           </button>
@@ -3806,7 +4129,7 @@ function SearchView({ activeList, updateList, apiKey, model, provider, onOpenDet
           <div className="absolute z-10 top-full mt-1.5 left-0 right-16 rounded-lg bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] shadow-lg overflow-hidden animate-float-in">
             {suggestions.map((s, i) => (
               <button key={i} onMouseDown={() => runSearch(s)}
-                className="w-full text-left px-3.5 py-2 text-sm text-[color:var(--text)] hover:bg-emerald-500/10 transition flex items-center gap-2">
+                className="w-full text-left px-3.5 py-2 text-sm text-[color:var(--text)] hover:bg-accent-500/10 transition flex items-center gap-2">
                 <Search size={12} className="text-[color:var(--text-faint)]" /> {s}
               </button>
             ))}
@@ -3822,7 +4145,7 @@ function SearchView({ activeList, updateList, apiKey, model, provider, onOpenDet
           </div>
           <div className="flex flex-wrap gap-2">
             {recent.map((w, i) => (
-              <div key={i} className="group flex items-center gap-1 text-xs pl-2.5 pr-1.5 py-1 rounded-full bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] text-[color:var(--text-dim)] hover:text-[color:var(--text)] hover:ring-emerald-500/30 transition">
+              <div key={i} className="group flex items-center gap-1 text-xs pl-2.5 pr-1.5 py-1 rounded-full bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] text-[color:var(--text-dim)] hover:text-[color:var(--text)] hover:ring-accent-500/30 transition">
                 <button onClick={() => runSearch(w)} className="hover:underline">{w}</button>
                 <button onClick={() => removeRecent(w)} className="opacity-0 group-hover:opacity-100 text-[color:var(--text-faint)] hover:text-rose-500 transition p-0.5">
                   <X size={11} />
@@ -3843,12 +4166,12 @@ function SearchView({ activeList, updateList, apiKey, model, provider, onOpenDet
 
       {result && (
         <div className="rounded-2xl overflow-hidden bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] animate-fade-up">
-          <div className="px-6 sm:px-8 py-7 bg-gradient-to-br from-teal-500/25 via-emerald-500/15 to-transparent border-b border-[color:var(--border)]">
+          <div className="px-6 sm:px-8 py-7 bg-gradient-to-br from-teal-500/25 via-accent-500/15 to-transparent border-b border-[color:var(--border)]">
             <div className="flex items-start justify-between mb-3">
               <span className="text-2xl">{VIBE_EMOJI[result.vibe] || "✨"}</span>
               {activeList && (
                 <button onClick={addToList} disabled={added}
-                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition disabled:opacity-60 bg-emerald-500 text-[#0a0e14] hover:bg-emerald-400 disabled:hover:bg-emerald-500">
+                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition disabled:opacity-60 bg-accent-500 text-[#0a0e14] hover:bg-accent-400 disabled:hover:bg-accent-500">
                   {added ? <><Check size={13} /> Added</> : <><Plus size={13} /> Add to {activeList.name}</>}
                 </button>
               )}
@@ -3876,7 +4199,7 @@ function SearchView({ activeList, updateList, apiKey, model, provider, onOpenDet
               <div>
                 <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-faint)] mb-2">Collocations</p>
                 <div className="flex flex-wrap gap-2">
-                  {coll.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 text-[color:var(--accent-text)] ring-1 ring-emerald-500/30">{c}</span>)}
+                  {coll.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-accent-500/15 text-[color:var(--accent-text)] ring-1 ring-accent-500/30">{c}</span>)}
                 </div>
               </div>
             )}
@@ -3954,7 +4277,7 @@ Assess: (1) Contextual accuracy — right meaning and tone per word. (2) Colloca
   };
 
   const vColor = (v) => ({
-    excellent: "text-emerald-700 dark:text-emerald-100 bg-emerald-500/10 dark:bg-emerald-500/15 ring-emerald-500/30",
+    excellent: "text-accent-700 dark:text-accent-100 bg-accent-500/10 dark:bg-accent-500/15 ring-accent-500/30",
     nuance: "text-amber-700 dark:text-amber-100 bg-amber-500/10 dark:bg-amber-500/15 ring-amber-500/30",
     error: "text-rose-700 dark:text-rose-100 bg-rose-500/10 dark:bg-rose-500/15 ring-rose-500/30",
   }[v] || "text-[color:var(--text-dim)] bg-[color:var(--surface2)] ring-[color:var(--border)]");
@@ -3974,9 +4297,9 @@ Assess: (1) Contextual accuracy — right meaning and tone per word. (2) Colloca
               const on = used[w.id];
               return (
                 <div key={w.id} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg ring-1 transition ${
-                  on ? "bg-emerald-500/15 ring-emerald-500/40" : "bg-[color:var(--surface)] ring-[color:var(--border)]"}`}>
+                  on ? "bg-accent-500/15 ring-accent-500/40" : "bg-[color:var(--surface)] ring-[color:var(--border)]"}`}>
                   <div className={`h-4 w-4 rounded flex items-center justify-center transition ${
-                    on ? "bg-emerald-500" : "ring-1 ring-[color:var(--text-faint)]"}`}>
+                    on ? "bg-accent-500" : "ring-1 ring-[color:var(--text-faint)]"}`}>
                     {on && <Check size={12} className="text-[#0a0e14]" strokeWidth={3} />}
                   </div>
                   <span className={`text-sm ${on ? "text-[color:var(--accent-text)]" : "text-[color:var(--text-dim)]"}`}>{w.word}</span>
@@ -3991,13 +4314,13 @@ Assess: (1) Contextual accuracy — right meaning and tone per word. (2) Colloca
           <div className="relative">
             <textarea value={text} onChange={(e) => setText(e.target.value)}
               placeholder="Write your paragraph here. Aim to work in the target words naturally…"
-              className="w-full h-64 bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] rounded-xl p-5 text-[15px] leading-relaxed text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/40 resize-none" />
+              className="w-full h-64 bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] rounded-xl p-5 text-[15px] leading-relaxed text-[color:var(--text)] focus:outline-none focus:ring-accent-500/40 resize-none" />
             <span className="absolute bottom-3 right-4 text-[11px] text-[color:var(--text-faint)]">{text.length} chars</span>
           </div>
 
           <div className="flex justify-end mt-4">
             <button onClick={analyze} disabled={loading}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-[#0a0e14] text-sm font-semibold hover:from-emerald-400 hover:to-teal-400 disabled:opacity-50 transition">
+              className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-r from-accent-500 to-teal-500 text-[#0a0e14] text-sm font-semibold hover:from-accent-400 hover:to-teal-400 disabled:opacity-50 transition">
               {loading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
               {loading ? "Analyzing…" : `Analyze with ${PROVIDERS[provider].short}`}
             </button>
@@ -4012,7 +4335,7 @@ Assess: (1) Contextual accuracy — right meaning and tone per word. (2) Colloca
           {feedback && (
             <div className="mt-6 space-y-6">
               {feedback.summary && (
-                <p className="text-sm text-[color:var(--text-dim)] leading-relaxed border-l-2 border-emerald-500/50 pl-4">{feedback.summary}</p>
+                <p className="text-sm text-[color:var(--text-dim)] leading-relaxed border-l-2 border-accent-500/50 pl-4">{feedback.summary}</p>
               )}
 
               <FeedbackBlock title="Contextual accuracy" items={feedback.accuracy} labelKey="word" vColor={vColor} />
@@ -4021,7 +4344,7 @@ Assess: (1) Contextual accuracy — right meaning and tone per word. (2) Colloca
               {feedback.rewrite && (
                 <div>
                   <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-dim)] mb-2">Suggested rewrite</p>
-                  <div className="rounded-xl bg-[color:var(--surface2)] ring-1 ring-emerald-500/25 p-5">
+                  <div className="rounded-xl bg-[color:var(--surface2)] ring-1 ring-accent-500/25 p-5">
                     <p className="text-[15px] text-[color:var(--text)] leading-relaxed">{feedback.rewrite}</p>
                   </div>
                 </div>
@@ -4090,7 +4413,7 @@ function KeyModal({ onClose, onGo }) {
         </p>
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-lg text-sm text-[color:var(--text-dim)] hover:text-[color:var(--text)] ring-1 ring-[color:var(--border)]">Not now</button>
-          <button onClick={onGo} className="flex-1 px-4 py-2.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400">Go to Settings</button>
+          <button onClick={onGo} className="flex-1 px-4 py-2.5 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-medium hover:bg-accent-400">Go to Settings</button>
         </div>
       </div>
     </div>
