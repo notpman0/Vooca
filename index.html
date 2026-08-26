@@ -1273,105 +1273,206 @@ function LeaderboardView({ profile, setProfile, uiLang, liveStats, setVocabTestR
   );
 }
 
-const VOCAB_TEST_TIME_LIMIT = 7;
+const VOCAB_TEST_TIME_LIMIT = 8;
+const VOCAB_TEST_WARMUP_QUESTIONS = 6;
 const VOCAB_TEST_MAX_QUESTIONS = 22;
-const VOCAB_TEST_CONTROL_EVERY = 5;
+const VOCAB_TEST_FAKE_EVERY = 4;
+const VOCAB_TEST_MAX_POOL = VOCAB_TEST_TIERS[VOCAB_TEST_TIERS.length - 1].pool;
 
-// Adaptive reading-vocabulary test: shows the written word, asks the tester to
-// match it to its definition (Chinese gloss, or an English gloss/synonym when
-// uiLang is "en"), climbs a tier on a correct answer and drops a tier on a
-// wrong one or a timeout, and periodically slips in an invented control word
-// (no real definition, Know/Don't-know format) to catch over-claiming.
-function genMCQuestion(tierIdx, isZh, usedMap) {
+// Adaptive reading-vocabulary test, in two stages:
+//  1) Warm-up — plain Know/Don't-know questions starting at the easiest tier,
+//     climbing a tier on every "know" to quickly locate a rough starting level.
+//  2) Adaptive multiple choice — the written word plus 4 definitions, a 5th
+//     "none of these" option (the real definition is sometimes deliberately
+//     left out), and a separate honest "I don't know" bail-out. Climbs a tier
+//     on a correct answer, drops on a wrong one, a timeout, or "I don't know".
+// Both stages periodically slip in an invented non-word (no real definition)
+// to catch over-claiming; picking a specific definition for one counts as a
+// false positive and discounts the final estimate.
+function estimateVocabScore(hist, fStats) {
+  let estimate = 0, prevPool = 0, reachedAny = false, level = null;
+  VOCAB_TEST_TIERS.forEach((tier) => {
+    const h = hist[tier.id];
+    const delta = tier.pool - prevPool;
+    let acc;
+    if (h && h.asked > 0) { acc = h.correct / h.asked; reachedAny = true; if (acc >= 0.5) level = tier; }
+    else { acc = reachedAny ? 0 : 1; }
+    estimate += delta * acc;
+    prevPool = tier.pool;
+  });
+  const fakeRate = fStats.asked ? fStats.falsePositive / fStats.asked : 0;
+  return { estimate: Math.max(0, Math.round(estimate * (1 - fakeRate))), level };
+}
+
+function genWarmupQuestion(tierIdx, usedMap, isZh) {
+  const tier = VOCAB_TEST_TIERS[tierIdx];
+  const usedWords = usedMap[tier.id] || [];
+  const avail = tier.words.filter((w) => !usedWords.includes(w.w));
+  const pool = avail.length ? avail : tier.words;
+  const word = pool[Math.floor(Math.random() * pool.length)];
+  const defOf = (item) => (isZh ? item.zh : item.en);
+  return { type: "warmup", isFake: false, tierIdx, tierId: tier.id, word: word.w, trueDef: defOf(word) };
+}
+
+function genWarmupFake(usedFakes) {
+  const avail = VOCAB_TEST_FAKES.filter((w) => !usedFakes.includes(w));
+  const pool = avail.length ? avail : VOCAB_TEST_FAKES;
+  return { type: "warmup", isFake: true, word: pool[Math.floor(Math.random() * pool.length)], trueDef: null };
+}
+
+function genMCReal(tierIdx, isZh, usedMap) {
   const tier = VOCAB_TEST_TIERS[tierIdx];
   const usedWords = usedMap[tier.id] || [];
   const avail = tier.words.filter((w) => !usedWords.includes(w.w));
   const pool = avail.length ? avail : tier.words;
   const word = pool[Math.floor(Math.random() * pool.length)];
   let distractorSource = tier.words.filter((w) => w.w !== word.w);
-  if (distractorSource.length < 3) {
+  if (distractorSource.length < 4) {
     const neighborIdx = tierIdx + 1 < VOCAB_TEST_TIERS.length ? tierIdx + 1 : tierIdx - 1;
     distractorSource = distractorSource.concat(VOCAB_TEST_TIERS[neighborIdx]?.words || []);
   }
-  const distractors = [...distractorSource].sort(() => Math.random() - 0.5).slice(0, 3);
+  const distractors = [...distractorSource].sort(() => Math.random() - 0.5).slice(0, 4);
   const defOf = (item) => (isZh ? item.zh : item.en);
-  const choices = [{ text: defOf(word), correct: true }, ...distractors.map((d) => ({ text: defOf(d), correct: false }))]
-    .sort(() => Math.random() - 0.5);
-  return { type: "mc", tierIdx, tierId: tier.id, word: word.w, choices };
+  const hideCorrect = Math.random() < 0.3;
+  let choices, correctChoiceIndex;
+  if (hideCorrect) {
+    choices = distractors.map(defOf);
+    correctChoiceIndex = null;
+  } else {
+    const combined = [defOf(word), ...distractors.slice(0, 3).map(defOf)];
+    const order = [0, 1, 2, 3].sort(() => Math.random() - 0.5);
+    choices = order.map((i) => combined[i]);
+    correctChoiceIndex = order.indexOf(0);
+  }
+  return { type: "mc", isFake: false, tierIdx, tierId: tier.id, word: word.w, trueDef: defOf(word), choices, correctChoiceIndex };
 }
 
-function genControlQuestion(usedFakes) {
+function genMCFake(usedFakes, tierIdxForDistractors, isZh) {
   const avail = VOCAB_TEST_FAKES.filter((w) => !usedFakes.includes(w));
   const pool = avail.length ? avail : VOCAB_TEST_FAKES;
-  return { type: "control", word: pool[Math.floor(Math.random() * pool.length)] };
+  const word = pool[Math.floor(Math.random() * pool.length)];
+  const tier = VOCAB_TEST_TIERS[tierIdxForDistractors];
+  const defOf = (item) => (isZh ? item.zh : item.en);
+  const choices = [...tier.words].sort(() => Math.random() - 0.5).slice(0, 4).map(defOf);
+  return { type: "mc", isFake: true, word, trueDef: null, choices, correctChoiceIndex: null };
+}
+
+function genQuestion(phase, tierIdx, usedMap, usedFakes, isZh, isFakeSlot) {
+  if (phase === "warmup") return isFakeSlot ? genWarmupFake(usedFakes) : genWarmupQuestion(tierIdx, usedMap, isZh);
+  return isFakeSlot ? genMCFake(usedFakes, tierIdx, isZh) : genMCReal(tierIdx, isZh, usedMap);
 }
 
 function VocabSizeTest({ uiLang, onDone, onClose, setVocabTestResult }) {
   const isZh = uiLang === "zh";
-  const [tierIdx, setTierIdx] = useState(Math.floor(VOCAB_TEST_TIERS.length / 2));
+  const noneLabel = isZh ? "以上都不是" : "None of these";
+  const idkLabel = isZh ? "我不知道" : "I don't know";
+
+  const [phase, setPhase] = useState("warmup");
+  const [tierIdx, setTierIdx] = useState(0);
   const [used, setUsed] = useState({});
   const [usedFakes, setUsedFakes] = useState([]);
   const [history, setHistory] = useState({});
   const [fakeStats, setFakeStats] = useState({ asked: 0, falsePositive: 0 });
   const [qIndex, setQIndex] = useState(0);
-  const [current, setCurrent] = useState(() => genMCQuestion(Math.floor(VOCAB_TEST_TIERS.length / 2), isZh, {}));
+  const [current, setCurrent] = useState(() => genQuestion("warmup", 0, {}, [], isZh, false));
   const [timeLeft, setTimeLeft] = useState(VOCAB_TEST_TIME_LIMIT);
+  const [feedback, setFeedback] = useState(null);
   const [result, setResult] = useState(null);
+  const commitRef = useRef(null);
+
+  const hasData = Object.keys(history).length > 0;
+  const liveScore = useMemo(() => estimateVocabScore(history, fakeStats), [history, fakeStats]);
 
   useEffect(() => {
-    if (!current || result !== null) return;
+    if (!current || feedback || result !== null) return;
     if (timeLeft <= 0) { submitAnswer(null); return; }
     const id = setTimeout(() => setTimeLeft((t) => t - 1), 1000);
     return () => clearTimeout(id);
-  }, [current, timeLeft, result]);
+  }, [current, timeLeft, feedback, result]);
 
   const finish = (hist, fStats) => {
-    let estimate = 0, prevPool = 0, reachedAny = false, level = null;
-    VOCAB_TEST_TIERS.forEach((tier) => {
-      const h = hist[tier.id];
-      const delta = tier.pool - prevPool;
-      let acc;
-      if (h) { acc = h.correct / h.asked; reachedAny = true; if (acc >= 0.5) level = tier; }
-      else { acc = reachedAny ? 0 : 1; }
-      estimate += delta * acc;
-      prevPool = tier.pool;
-    });
-    const fakeRate = fStats.asked ? fStats.falsePositive / fStats.asked : 0;
-    const finalEstimate = Math.max(0, Math.round(estimate * (1 - fakeRate)));
-    setResult({ estimate: finalEstimate, level });
-    setVocabTestResult(() => finalEstimate);
+    const { estimate, level } = estimateVocabScore(hist, fStats);
+    setResult({ estimate, level });
+    setVocabTestResult(() => estimate);
   };
 
-  const proceed = (nextTierIdx, usedMap, usedFakesList, fStats, hist) => {
-    const newQIndex = qIndex + 1;
+  const proceed = (nextPhase, nextTierIdx, usedMap, usedFakesList, fStats, hist, newQIndex) => {
+    setPhase(nextPhase);
     setQIndex(newQIndex);
     setTimeLeft(VOCAB_TEST_TIME_LIMIT);
     if (newQIndex >= VOCAB_TEST_MAX_QUESTIONS) { finish(hist, fStats); return; }
-    const useControl = newQIndex % VOCAB_TEST_CONTROL_EVERY === 0;
-    setCurrent(useControl ? genControlQuestion(usedFakesList) : genMCQuestion(nextTierIdx, isZh, usedMap));
+    const isFakeSlot = newQIndex > 0 && newQIndex % VOCAB_TEST_FAKE_EVERY === 0;
+    setCurrent(genQuestion(nextPhase, nextTierIdx, usedMap, usedFakesList, isZh, isFakeSlot));
   };
 
   const submitAnswer = (answer) => {
-    if (!current || result !== null) return;
-    if (current.type === "control") {
-      const isKnowClaim = answer === true;
-      const newFakeStats = { asked: fakeStats.asked + 1, falsePositive: fakeStats.falsePositive + (isKnowClaim ? 1 : 0) };
+    if (!current || feedback || result !== null) return;
+    const newQIndex = qIndex + 1;
+    const nextPhase = newQIndex >= VOCAB_TEST_WARMUP_QUESTIONS ? "mc" : phase;
+
+    if (current.isFake) {
+      const claimedKnowledge = phase === "warmup" ? answer === true : typeof answer === "number";
+      const newFakeStats = { asked: fakeStats.asked + 1, falsePositive: fakeStats.falsePositive + (claimedKnowledge ? 1 : 0) };
       const newUsedFakes = [...usedFakes, current.word];
-      setFakeStats(newFakeStats);
-      setUsedFakes(newUsedFakes);
-      proceed(tierIdx, used, newUsedFakes, newFakeStats, history);
+      setFeedback({ word: current.word, trueDef: null, isFake: true, verdict: null });
+      commitRef.current = () => {
+        setFakeStats(newFakeStats);
+        setUsedFakes(newUsedFakes);
+        proceed(nextPhase, tierIdx, used, newUsedFakes, newFakeStats, history, newQIndex);
+      };
       return;
     }
-    const correct = answer !== null && current.choices[answer].correct;
+
+    if (phase === "warmup") {
+      const claimedKnow = answer === true;
+      const prevHist = history[current.tierId] || { asked: 0, correct: 0 };
+      const newHistory = { ...history, [current.tierId]: { asked: prevHist.asked + 1, correct: prevHist.correct + (claimedKnow ? 1 : 0) } };
+      const newUsed = { ...used, [current.tierId]: [...(used[current.tierId] || []), current.word] };
+      const nextTier = claimedKnow ? Math.min(current.tierIdx + 1, VOCAB_TEST_TIERS.length - 1) : Math.max(current.tierIdx - 1, 0);
+      setFeedback({ word: current.word, trueDef: current.trueDef, isFake: false, verdict: null });
+      commitRef.current = () => {
+        setHistory(newHistory);
+        setUsed(newUsed);
+        setTierIdx(nextTier);
+        proceed(nextPhase, nextTier, newUsed, usedFakes, fakeStats, newHistory, newQIndex);
+      };
+      return;
+    }
+
+    const correct = typeof answer === "number"
+      ? current.correctChoiceIndex === answer
+      : answer === "none" && current.correctChoiceIndex === null;
     const prevHist = history[current.tierId] || { asked: 0, correct: 0 };
     const newHistory = { ...history, [current.tierId]: { asked: prevHist.asked + 1, correct: prevHist.correct + (correct ? 1 : 0) } };
     const newUsed = { ...used, [current.tierId]: [...(used[current.tierId] || []), current.word] };
     const nextTier = correct ? Math.min(current.tierIdx + 1, VOCAB_TEST_TIERS.length - 1) : Math.max(current.tierIdx - 1, 0);
-    setHistory(newHistory);
-    setUsed(newUsed);
-    setTierIdx(nextTier);
-    proceed(nextTier, newUsed, usedFakes, fakeStats, newHistory);
+    setFeedback({ word: current.word, trueDef: current.trueDef, isFake: false, verdict: correct ? "correct" : "wrong" });
+    commitRef.current = () => {
+      setHistory(newHistory);
+      setUsed(newUsed);
+      setTierIdx(nextTier);
+      proceed("mc", nextTier, newUsed, usedFakes, fakeStats, newHistory, newQIndex);
+    };
   };
+
+  const onContinue = () => {
+    const fn = commitRef.current;
+    commitRef.current = null;
+    setFeedback(null);
+    fn && fn();
+  };
+
+  const EstimateBar = () => (
+    <div className="rounded-lg bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] px-4 py-2.5 mb-5">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[11px] text-[color:var(--text-faint)] flex items-center gap-1"><Target size={11} className="text-[color:var(--accent-text)]" /> {isZh ? "实时估计词汇量" : "Live estimate"}</span>
+        <span className="text-sm font-semibold text-[color:var(--text)]">{hasData ? `~${liveScore.estimate.toLocaleString()}` : "—"}</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-[color:var(--border)] overflow-hidden">
+        <div className="h-full bg-emerald-500 transition-all" style={{ width: `${hasData ? Math.min(100, (liveScore.estimate / VOCAB_TEST_MAX_POOL) * 100) : 0}%` }} />
+      </div>
+    </div>
+  );
 
   if (result !== null) {
     const examLabel = result.level ? (isZh ? `${result.level.id} · ${result.level.exam}` : `${result.level.id} (${result.level.exam})`) : (isZh ? "入门" : "Beginner");
@@ -1390,7 +1491,32 @@ function VocabSizeTest({ uiLang, onDone, onClose, setVocabTestResult }) {
     );
   }
 
-  const tier = current.type === "mc" ? VOCAB_TEST_TIERS[current.tierIdx] : null;
+  if (feedback) {
+    return (
+      <div className="max-w-lg mx-auto px-4 sm:px-8 py-10">
+        <EstimateBar />
+        <div className="text-center">
+          {feedback.verdict && (
+            <p className={`text-xs uppercase tracking-[0.2em] mb-3 font-semibold ${feedback.verdict === "correct" ? "text-emerald-500" : "text-rose-500"}`}>
+              {feedback.verdict === "correct" ? (isZh ? "正确！" : "Correct!") : (isZh ? "不太对" : "Not quite")}
+            </p>
+          )}
+          <h2 className="text-3xl font-semibold text-[color:var(--text)] mb-3">{feedback.word}</h2>
+          <p className="text-sm text-[color:var(--text-dim)] mb-8">
+            {feedback.isFake
+              ? (isZh ? "这不是一个真实存在的英文单词。" : "This isn't a real English word.")
+              : (isZh ? `释义：${feedback.trueDef}` : `Definition: ${feedback.trueDef}`)}
+          </p>
+          <button onClick={onContinue}
+            className="px-6 py-3 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400 transition">
+            {isZh ? "继续" : "Continue"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const tier = !current.isFake ? VOCAB_TEST_TIERS[current.tierIdx] : null;
   const progress = (qIndex / VOCAB_TEST_MAX_QUESTIONS) * 100;
   const timeProgress = (timeLeft / VOCAB_TEST_TIME_LIMIT) * 100;
 
@@ -1398,13 +1524,16 @@ function VocabSizeTest({ uiLang, onDone, onClose, setVocabTestResult }) {
     <div className="max-w-lg mx-auto px-4 sm:px-8 py-10">
       <div className="flex items-center justify-between mb-2">
         <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)]">
-          {isZh ? "测词汇量" : "Vocabulary size test"}{tier && <span className="ml-2 text-[color:var(--text-faint)] normal-case tracking-normal">{tier.id}</span>}
+          {phase === "warmup" ? (isZh ? "热身" : "Warm-up") : (isZh ? "适应性测试" : "Adaptive")}
+          {tier && <span className="ml-2 text-[color:var(--text-faint)] normal-case tracking-normal">{tier.id}</span>}
         </p>
         <button onClick={onClose} className="text-[color:var(--text-faint)] hover:text-[color:var(--text)]"><X size={18} /></button>
       </div>
       <div className="h-1.5 rounded-full bg-[color:var(--border)] mb-4 overflow-hidden">
         <div className="h-full bg-emerald-500 transition-all" style={{ width: `${progress}%` }} />
       </div>
+
+      <EstimateBar />
 
       <div className={`flex items-center justify-center gap-1.5 text-xs font-mono mb-6 ${timeLeft <= 2 ? "text-rose-500" : "text-[color:var(--text-faint)]"}`}>
         <Clock size={13} />
@@ -1422,10 +1551,18 @@ function VocabSizeTest({ uiLang, onDone, onClose, setVocabTestResult }) {
             {current.choices.map((c, i) => (
               <button key={i} onClick={() => submitAnswer(i)}
                 className="text-left px-4 py-3 rounded-lg ring-1 ring-[color:var(--border)] text-sm text-[color:var(--text)] hover:ring-emerald-500/40 hover:bg-emerald-500/5 transition">
-                {c.text}
+                {c}
               </button>
             ))}
+            <button onClick={() => submitAnswer("none")}
+              className="text-left px-4 py-3 rounded-lg ring-1 ring-[color:var(--border)] text-sm italic text-[color:var(--text-dim)] hover:ring-emerald-500/40 hover:bg-emerald-500/5 transition">
+              {noneLabel}
+            </button>
           </div>
+          <button onClick={() => submitAnswer("idk")}
+            className="w-full mt-4 py-2.5 rounded-lg ring-1 ring-dashed ring-[color:var(--border)] text-xs font-medium text-[color:var(--text-faint)] hover:text-[color:var(--text-dim)] hover:ring-[color:var(--text-faint)] transition">
+            {idkLabel}
+          </button>
         </>
       ) : (
         <>
