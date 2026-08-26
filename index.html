@@ -131,7 +131,9 @@ const BrandMark = (p) => <Icon {...p} path='<path d="M6.5 5.2 4 2M17.5 5.2 20 2"
 const LS = {
   theme: "vcw_theme",
   accounts: "vcw_accounts", currentEmail: "vcw_currentEmail", loggedIn: "vcw_loggedIn",
+  currentUsername: "vcw_currentUsername", sessionToken: "vcw_sessionToken",
 };
+const AUTH_BASE = "https://vbmaster-proxy.vbmaster-proxy.workers.dev";
 let CURRENT_EMAIL = null;
 const nsKey = (base) => CURRENT_EMAIL ? `vcw_acct_${CURRENT_EMAIL}_${base}` : `vcw_${base}`;
 
@@ -438,40 +440,142 @@ function getReviewMemorizePool(list) {
 }
 
 /* ---------------- Auth gate ---------------- */
+async function authRequest(path, method, body, token) {
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  let lastErr;
+  for (let attempt = 0; attempt <= 2; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 600 * attempt));
+    let res;
+    try {
+      res = await fetch(`${AUTH_BASE}${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
+    } catch {
+      lastErr = new Error("Network error — check your connection.");
+      continue;
+    }
+    let data = {};
+    try { data = await res.json(); } catch { /* empty body */ }
+    if (res.ok) return data;
+    if (res.status >= 500 || res.status === 429) { lastErr = new Error(data.error || `Request failed (HTTP ${res.status})`); continue; }
+    const err = new Error(data.error || `Request failed (HTTP ${res.status})`);
+    err.data = data;
+    throw err;
+  }
+  throw lastErr;
+}
+
+// Accounts live on the server (Cloudflare KV via the same worker as the
+// leaderboard): passwords are PBKDF2-hashed server-side, registration and
+// password reset go through a 6-digit emailed code, and login accepts either
+// a username or an email. Personal app data (word lists, stats, API key)
+// stays local per nsKey() — only identity/auth is server-backed.
 function AuthGate({ onAuth }) {
-  const [accounts] = useState(() => load(LS.accounts, []));
-  const [mode, setMode] = useState(accounts.length ? "login" : "register");
-  const [name, setName] = useState("");
+  const [mode, setMode] = useState("login"); // login | register | verify | forgot | reset
+  const [identifier, setIdentifier] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [error, setError] = useState(null);
+  const [info, setInfo] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
-  const submit = (e) => {
-    e.preventDefault();
-    setError(null);
-    const normEmail = email.trim().toLowerCase();
-    if (mode === "register") {
-      if (!name.trim() || !normEmail || !password) { setError("Fill in every field to create your account."); return; }
-      if (accounts.some((a) => a.email === normEmail)) {
-        setError("An account with that email already exists on this device — log in instead.");
-        setMode("login");
-        return;
-      }
-      const acc = { name: name.trim(), email: normEmail, password };
-      save(LS.accounts, [...accounts, acc]);
-      save(LS.currentEmail, normEmail);
-      save(LS.loggedIn, true);
-      onAuth();
-      return;
-    }
-    const acc = accounts.find((a) => a.email === normEmail);
-    if (!acc || acc.password !== password) {
-      setError(accounts.length ? "Incorrect email or password." : "No account on this device yet — create one first.");
-      return;
-    }
-    save(LS.currentEmail, acc.email);
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const t = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendCooldown]);
+
+  const switchMode = (m) => { setMode(m); setError(null); setInfo(null); };
+
+  const finishLogin = (data) => {
+    save(LS.currentEmail, data.email);
+    save(LS.currentUsername, data.username);
+    save(LS.sessionToken, data.token);
     save(LS.loggedIn, true);
     onAuth();
+  };
+
+  const submitLogin = async (e) => {
+    e.preventDefault();
+    setError(null); setInfo(null);
+    if (!identifier.trim() || !password) { setError("Enter your username/email and password."); return; }
+    setLoading(true);
+    try {
+      const data = await authRequest("/auth/login", "POST", { identifier: identifier.trim(), password });
+      finishLogin(data);
+    } catch (err) {
+      if (err.data?.needsVerification) {
+        setEmail(err.data.email);
+        setMode("verify");
+        setInfo("Verify your email to finish logging in — check your inbox for the code.");
+      } else {
+        setError(err.message);
+      }
+    } finally { setLoading(false); }
+  };
+
+  const submitRegister = async (e) => {
+    e.preventDefault();
+    setError(null); setInfo(null);
+    if (!username.trim() || !email.trim() || !password) { setError("Fill in every field to create your account."); return; }
+    setLoading(true);
+    try {
+      await authRequest("/auth/register", "POST", { username: username.trim(), email: email.trim(), password });
+      setMode("verify");
+      setInfo(`We sent a 6-digit code to ${email.trim()}.`);
+      setResendCooldown(30);
+    } catch (err) { setError(err.message); } finally { setLoading(false); }
+  };
+
+  const submitVerify = async (e) => {
+    e.preventDefault();
+    setError(null); setInfo(null);
+    if (!code.trim()) { setError("Enter the 6-digit code."); return; }
+    setLoading(true);
+    try {
+      const data = await authRequest("/auth/verify", "POST", { email: email.trim(), code: code.trim() });
+      finishLogin(data);
+    } catch (err) { setError(err.message); } finally { setLoading(false); }
+  };
+
+  const resendCode = async (purpose) => {
+    setError(null); setInfo(null);
+    setLoading(true);
+    try {
+      await authRequest("/auth/resend", "POST", { email: email.trim(), purpose });
+      setInfo("Code resent — check your inbox.");
+      setResendCooldown(30);
+    } catch (err) { setError(err.message); } finally { setLoading(false); }
+  };
+
+  const submitForgot = async (e) => {
+    e.preventDefault();
+    setError(null); setInfo(null);
+    if (!email.trim()) { setError("Enter your account email."); return; }
+    setLoading(true);
+    try {
+      await authRequest("/auth/forgot", "POST", { email: email.trim() });
+      setMode("reset");
+      setInfo(`If an account exists for ${email.trim()}, we sent a reset code.`);
+      setResendCooldown(30);
+    } catch (err) { setError(err.message); } finally { setLoading(false); }
+  };
+
+  const submitReset = async (e) => {
+    e.preventDefault();
+    setError(null); setInfo(null);
+    if (!code.trim() || newPassword.length < 6) { setError("Enter the code and a password of at least 6 characters."); return; }
+    setLoading(true);
+    try {
+      await authRequest("/auth/reset", "POST", { email: email.trim(), code: code.trim(), newPassword });
+      setIdentifier(email.trim());
+      setPassword("");
+      switchMode("login");
+      setInfo("Password reset — log in with your new password.");
+    } catch (err) { setError(err.message); } finally { setLoading(false); }
   };
 
   return (
@@ -487,44 +591,151 @@ function AuthGate({ onAuth }) {
         </div>
 
         <div className="rounded-2xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-6 shadow-lg">
-          <div className="flex rounded-lg bg-[color:var(--surface2)] p-1 mb-5">
-            <button type="button" onClick={() => { setMode("login"); setError(null); }}
-              className={`flex-1 py-1.5 rounded-md text-sm font-medium transition ${mode === "login" ? "bg-[color:var(--surface)] text-[color:var(--text)] shadow-sm" : "text-[color:var(--text-faint)]"}`}>
-              Log in
-            </button>
-            <button type="button" onClick={() => { setMode("register"); setError(null); }}
-              className={`flex-1 py-1.5 rounded-md text-sm font-medium transition ${mode === "register" ? "bg-[color:var(--surface)] text-[color:var(--text)] shadow-sm" : "text-[color:var(--text-faint)]"}`}>
-              Register
-            </button>
-          </div>
+          {(mode === "login" || mode === "register") && (
+            <div className="flex rounded-lg bg-[color:var(--surface2)] p-1 mb-5">
+              <button type="button" onClick={() => switchMode("login")}
+                className={`flex-1 py-1.5 rounded-md text-sm font-medium transition ${mode === "login" ? "bg-[color:var(--surface)] text-[color:var(--text)] shadow-sm" : "text-[color:var(--text-faint)]"}`}>
+                Log in
+              </button>
+              <button type="button" onClick={() => switchMode("register")}
+                className={`flex-1 py-1.5 rounded-md text-sm font-medium transition ${mode === "register" ? "bg-[color:var(--surface)] text-[color:var(--text)] shadow-sm" : "text-[color:var(--text-faint)]"}`}>
+                Register
+              </button>
+            </div>
+          )}
 
-          <form onSubmit={submit} className="space-y-3">
-            {mode === "register" && (
+          {mode === "verify" && (
+            <div className="mb-5">
+              <h2 className="text-sm font-semibold text-[color:var(--text)]">Verify your email</h2>
+              <p className="text-xs text-[color:var(--text-dim)] mt-1 font-mono">{email}</p>
+            </div>
+          )}
+          {mode === "forgot" && (
+            <div className="mb-5"><h2 className="text-sm font-semibold text-[color:var(--text)]">Reset your password</h2></div>
+          )}
+          {mode === "reset" && (
+            <div className="mb-5">
+              <h2 className="text-sm font-semibold text-[color:var(--text)]">Enter your reset code</h2>
+              <p className="text-xs text-[color:var(--text-dim)] mt-1 font-mono">{email}</p>
+            </div>
+          )}
+
+          {mode === "login" && (
+            <form onSubmit={submitLogin} className="space-y-3">
               <div>
-                <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Name</label>
-                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ada Lovelace"
+                <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Username or email</label>
+                <input value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="ada or ada@example.com"
                   className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
               </div>
-            )}
-            <div>
-              <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Email</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com"
-                className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
-            </div>
-            <div>
-              <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Password</label>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••"
-                className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
-            </div>
-            {error && <p className="text-[11px] text-rose-700 dark:text-rose-300">{error}</p>}
-            <button type="submit"
-              className="w-full py-2.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 transition">
-              {mode === "register" ? "Create account" : "Log in"}
-            </button>
-          </form>
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs text-[color:var(--text-dim)]">Password</label>
+                  <button type="button" onClick={() => switchMode("forgot")} className="text-[11px] text-[color:var(--accent-text)] hover:underline">
+                    Forgot password?
+                  </button>
+                </div>
+                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••"
+                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+              </div>
+              {error && <p className="text-[11px] text-rose-700 dark:text-rose-300">{error}</p>}
+              {info && <p className="text-[11px] text-emerald-700 dark:text-emerald-300">{info}</p>}
+              <button type="submit" disabled={loading}
+                className="w-full py-2.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 disabled:opacity-50 transition">
+                {loading ? "Logging in…" : "Log in"}
+              </button>
+            </form>
+          )}
+
+          {mode === "register" && (
+            <form onSubmit={submitRegister} className="space-y-3">
+              <div>
+                <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Username</label>
+                <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="ada"
+                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+              </div>
+              <div>
+                <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Email</label>
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com"
+                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+              </div>
+              <div>
+                <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Password</label>
+                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 6 characters"
+                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+              </div>
+              {error && <p className="text-[11px] text-rose-700 dark:text-rose-300">{error}</p>}
+              <button type="submit" disabled={loading}
+                className="w-full py-2.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 disabled:opacity-50 transition">
+                {loading ? "Creating account…" : "Create account"}
+              </button>
+            </form>
+          )}
+
+          {mode === "verify" && (
+            <form onSubmit={submitVerify} className="space-y-3">
+              {info && <p className="text-[11px] text-emerald-700 dark:text-emerald-300">{info}</p>}
+              <div>
+                <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">6-digit code</label>
+                <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="123456" inputMode="numeric"
+                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm tracking-[0.3em] text-center text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+              </div>
+              {error && <p className="text-[11px] text-rose-700 dark:text-rose-300">{error}</p>}
+              <button type="submit" disabled={loading}
+                className="w-full py-2.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 disabled:opacity-50 transition">
+                {loading ? "Verifying…" : "Verify"}
+              </button>
+              <button type="button" onClick={() => resendCode("register")} disabled={resendCooldown > 0 || loading}
+                className="w-full py-2 text-xs text-[color:var(--text-dim)] hover:text-[color:var(--text)] disabled:opacity-40 transition">
+                {resendCooldown > 0 ? `Resend code (${resendCooldown}s)` : "Resend code"}
+              </button>
+            </form>
+          )}
+
+          {mode === "forgot" && (
+            <form onSubmit={submitForgot} className="space-y-3">
+              <div>
+                <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Account email</label>
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com"
+                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+              </div>
+              {error && <p className="text-[11px] text-rose-700 dark:text-rose-300">{error}</p>}
+              <button type="submit" disabled={loading}
+                className="w-full py-2.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 disabled:opacity-50 transition">
+                {loading ? "Sending…" : "Send reset code"}
+              </button>
+              <button type="button" onClick={() => switchMode("login")} className="w-full py-2 text-xs text-[color:var(--text-dim)] hover:text-[color:var(--text)] transition">
+                Back to log in
+              </button>
+            </form>
+          )}
+
+          {mode === "reset" && (
+            <form onSubmit={submitReset} className="space-y-3">
+              {info && <p className="text-[11px] text-emerald-700 dark:text-emerald-300">{info}</p>}
+              <div>
+                <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">6-digit code</label>
+                <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="123456" inputMode="numeric"
+                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm tracking-[0.3em] text-center text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+              </div>
+              <div>
+                <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">New password</label>
+                <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="At least 6 characters"
+                  className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+              </div>
+              {error && <p className="text-[11px] text-rose-700 dark:text-rose-300">{error}</p>}
+              <button type="submit" disabled={loading}
+                className="w-full py-2.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 disabled:opacity-50 transition">
+                {loading ? "Resetting…" : "Reset password"}
+              </button>
+              <button type="button" onClick={() => resendCode("reset")} disabled={resendCooldown > 0 || loading}
+                className="w-full py-2 text-xs text-[color:var(--text-dim)] hover:text-[color:var(--text)] disabled:opacity-40 transition">
+                {resendCooldown > 0 ? `Resend code (${resendCooldown}s)` : "Resend code"}
+              </button>
+            </form>
+          )}
         </div>
         <p className="text-[11px] text-[color:var(--text-faint)] text-center mt-4 leading-relaxed">
-          This is a local profile only — stored in this browser, not on a server, with no email verification. Each account on this device gets its own separate word lists, progress, and API key. Passwords aren't encrypted, so don't reuse a real one.
+          Your word lists, progress, and API key stay local to this browser. Only your account — email, username, and password — lives on the server, so you can log in and reset your password from anywhere.
         </p>
       </div>
     </div>
@@ -565,9 +776,7 @@ function App({ onLogout }) {
   const [profile, setProfile] = useState(() => {
     const stored = load(nsKey("profile"), null);
     if (stored) return stored;
-    const accounts = load(LS.accounts, []);
-    const account = accounts.find((a) => a.email === CURRENT_EMAIL);
-    return { userId: genId(), displayName: account?.name || "Learner", leaderboardOptIn: false };
+    return { userId: genId(), displayName: load(LS.currentUsername, null) || "Learner", leaderboardOptIn: false };
   });
   const [uiLang, setUiLang] = useState(() => load(nsKey("uiLang"), navigator.language?.startsWith("zh") ? "zh" : "en"));
   const [vocabTestResult, setVocabTestResult] = useState(() => load(nsKey("vocabTestResult"), 0));
@@ -971,8 +1180,7 @@ function SettingsView({ apiKey, setApiKey, model, setModel, provider, setProvide
   const [nameDraft, setNameDraft] = useState(profile.displayName);
   const [copied, setCopied] = useState(false);
   const dirty = draft !== apiKey;
-  const accounts = load(LS.accounts, []);
-  const account = accounts.find((a) => a.email === CURRENT_EMAIL) || null;
+  const currentUsername = load(LS.currentUsername, null);
   const info = PROVIDERS[provider];
   const themes = [
     { id: "light", label: "Light", icon: Sun },
@@ -1157,7 +1365,7 @@ function SettingsView({ apiKey, setApiKey, model, setModel, provider, setProvide
 
       <section className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-6 mt-6">
         <h3 className="text-sm font-semibold text-[color:var(--text)] mb-1">Account</h3>
-        <p className="text-xs text-[color:var(--text-dim)] mb-4">{account ? `Signed in as ${account.name} (${account.email})` : "Local profile"}</p>
+        <p className="text-xs text-[color:var(--text-dim)] mb-4">{currentUsername ? `Signed in as ${currentUsername} (${CURRENT_EMAIL})` : CURRENT_EMAIL}</p>
         <button onClick={onLogout}
           className="px-4 py-2 rounded-lg ring-1 ring-[color:var(--border)] text-sm text-[color:var(--text)] hover:ring-rose-500/40 hover:text-rose-600 dark:hover:text-rose-300 transition">
           Log out
@@ -3880,14 +4088,34 @@ function Root() {
   const [authed, setAuthed] = useState(() => load(LS.loggedIn, false));
   CURRENT_EMAIL = load(LS.currentEmail, null);
 
+  const doLogout = () => {
+    save(LS.loggedIn, false);
+    save(LS.sessionToken, null);
+    setAuthed(false);
+  };
+
   useEffect(() => {
     const theme = load(LS.theme, "dark");
     const eff = theme === "system" ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : theme;
     document.documentElement.setAttribute("data-theme", eff);
   }, []);
 
+  // Optimistic: trust the local session so the app stays usable offline, but
+  // quietly confirm with the server and only sign out if it explicitly says
+  // the session is gone (never on a network hiccup).
+  useEffect(() => {
+    if (!authed) return;
+    const token = load(LS.sessionToken, null);
+    if (!token) return;
+    let cancelled = false;
+    fetch(`${AUTH_BASE}/auth/session`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => { if (!cancelled && r.status === 401) doLogout(); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [authed]);
+
   if (!authed || !CURRENT_EMAIL) return <AuthGate onAuth={() => setAuthed(true)} />;
-  return <App key={CURRENT_EMAIL} onLogout={() => { save(LS.loggedIn, false); setAuthed(false); }} />;
+  return <App key={CURRENT_EMAIL} onLogout={doLogout} />;
 }
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
