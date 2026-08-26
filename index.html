@@ -911,17 +911,21 @@ function App({ onLogout }) {
   const [vocabTestResult, setVocabTestResult] = useState(() => load(nsKey("vocabTestResult"), 0));
 
   const isAdmin = CURRENT_EMAIL === ADMIN_EMAIL;
-  const [sessionInfo, setSessionInfo] = useState({ bonusPoints: 0, lastUsernameChange: null, vocabSizeOverride: null });
+  const [sessionInfo, setSessionInfo] = useState({ bonusPoints: 0, lastUsernameChange: null, vocabSizeOverride: null, leaderboardId: null });
   const refreshSessionInfo = () => {
     const token = load(LS.sessionToken, null);
     if (!token) return;
     fetch(`${AUTH_BASE}/auth/session`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d) setSessionInfo({ bonusPoints: d.bonusPoints || 0, lastUsernameChange: d.lastUsernameChange || null, vocabSizeOverride: d.vocabSizeOverride ?? null }); })
+      .then((d) => { if (d) setSessionInfo({ bonusPoints: d.bonusPoints || 0, lastUsernameChange: d.lastUsernameChange || null, vocabSizeOverride: d.vocabSizeOverride ?? null, leaderboardId: d.leaderboardId || null }); })
       .catch(() => {});
   };
   useEffect(() => { refreshSessionInfo(); }, []);
   const effectiveVocabSize = sessionInfo.vocabSizeOverride ?? vocabTestResult;
+  // Tied to the account (via /auth/session), not generated locally per browser
+  // — so logging in anywhere resolves to the same leaderboard row instead of
+  // spawning a new one each time local storage is fresh.
+  const leaderboardUserId = sessionInfo.leaderboardId || profile.userId;
 
   useEffect(() => save(nsKey("provider"), provider), [provider]);
   useEffect(() => save(nsKey("providerKeys"), providerKeys), [providerKeys]);
@@ -1005,14 +1009,14 @@ function App({ onLogout }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: profile.userId,
+          userId: leaderboardUserId,
           displayName: profile.displayName,
           stats: { totalLearned: totalIntroduced, totalMastered, vocabSize: effectiveVocabSize, streak: streak.count, points },
         }),
       }).catch(() => {});
     }, 1200);
     return () => clearTimeout(t);
-  }, [profile.leaderboardOptIn, profile.userId, profile.displayName, totalIntroduced, totalMastered, effectiveVocabSize, streak.count, points]);
+  }, [profile.leaderboardOptIn, leaderboardUserId, profile.displayName, totalIntroduced, totalMastered, effectiveVocabSize, streak.count, points]);
 
   const prevOptIn = useRef(profile.leaderboardOptIn);
   useEffect(() => {
@@ -1020,7 +1024,7 @@ function App({ onLogout }) {
       fetch(`${LEADERBOARD_BASE}/leaderboard/remove`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: profile.userId }),
+        body: JSON.stringify({ userId: leaderboardUserId }),
       }).catch(() => {});
     }
     prevOptIn.current = profile.leaderboardOptIn;
@@ -1174,10 +1178,10 @@ function App({ onLogout }) {
               <Sandbox {...{ words: activeList.words, apiKey, model, provider, setStats, registerActivity, promptKey: () => setShowKeyModal(true) }} />
             )}
             {view === "leaderboard" && (
-              <LeaderboardView {...{ profile, setProfile, uiLang, setVocabTestResult, onCreateList: createPersonalizedList, liveStats: { totalLearned: totalIntroduced, totalMastered, vocabSize: effectiveVocabSize, streak: streak.count, points } }} />
+              <LeaderboardView {...{ profile, setProfile, uiLang, setVocabTestResult, onCreateList: createPersonalizedList, leaderboardUserId, liveStats: { totalLearned: totalIntroduced, totalMastered, vocabSize: effectiveVocabSize, streak: streak.count, points } }} />
             )}
             {view === "settings" && (
-              <SettingsView {...{ apiKey, setApiKey, model, setModel, provider, setProvider, providerKeys, providerModels, theme, setTheme, onLogout, profile, setProfile, uiLang, setUiLang, sessionInfo, refreshSessionInfo }} />
+              <SettingsView {...{ apiKey, setApiKey, model, setModel, provider, setProvider, providerKeys, providerModels, theme, setTheme, onLogout, profile, setProfile, uiLang, setUiLang, sessionInfo, refreshSessionInfo, leaderboardUserId }} />
             )}
             {view === "admin" && isAdmin && (
               <AdminPanel onExit={() => setView("dashboard")} />
@@ -1578,7 +1582,7 @@ function formatRemaining(ms) {
   return `${secs}s`;
 }
 
-function SettingsView({ apiKey, setApiKey, model, setModel, provider, setProvider, providerKeys, providerModels, theme, setTheme, onLogout, profile, setProfile, uiLang, setUiLang, sessionInfo, refreshSessionInfo }) {
+function SettingsView({ apiKey, setApiKey, model, setModel, provider, setProvider, providerKeys, providerModels, theme, setTheme, onLogout, profile, setProfile, uiLang, setUiLang, sessionInfo, refreshSessionInfo, leaderboardUserId }) {
   const [draft, setDraft] = useState(apiKey);
   const [showKey, setShowKey] = useState(false);
   const [nameDraft, setNameDraft] = useState(profile.displayName);
@@ -1797,9 +1801,9 @@ function SettingsView({ apiKey, setApiKey, model, setModel, provider, setProvide
         <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Your user ID</label>
         <div className="flex gap-2 mb-5">
           <code className="flex-1 bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-xs text-[color:var(--text-dim)] font-mono overflow-x-auto whitespace-nowrap">
-            {profile.userId}
+            {leaderboardUserId}
           </code>
-          <button onClick={() => { navigator.clipboard.writeText(profile.userId); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+          <button onClick={() => { navigator.clipboard.writeText(leaderboardUserId); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
             className="px-3 rounded-lg ring-1 ring-[color:var(--border)] text-[color:var(--text-dim)] hover:text-[color:var(--text)] hover:ring-accent-500/40 transition">
             {copied ? <Check size={15} className="text-accent-500" /> : <Copy size={15} />}
           </button>
@@ -1853,7 +1857,7 @@ function SettingsView({ apiKey, setApiKey, model, setModel, provider, setProvide
 }
 
 /* ---------------- Leaderboard ---------------- */
-function LeaderboardView({ profile, setProfile, uiLang, liveStats, setVocabTestResult, onCreateList }) {
+function LeaderboardView({ profile, setProfile, uiLang, liveStats, setVocabTestResult, onCreateList, leaderboardUserId }) {
   const [tab, setTab] = useState("totalLearned");
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1872,7 +1876,7 @@ function LeaderboardView({ profile, setProfile, uiLang, liveStats, setVocabTestR
   }, [tab, showTest]);
 
   const isZh = uiLang === "zh";
-  const myRank = entries.findIndex((e) => e.id === profile.userId);
+  const myRank = entries.findIndex((e) => e.id === leaderboardUserId);
 
   if (showTest) {
     return <VocabSizeTest uiLang={uiLang} onDone={() => { setProfile((p) => ({ ...p, leaderboardOptIn: true })); setShowTest(false); setTab("vocabSize"); }} onClose={() => setShowTest(false)} setVocabTestResult={setVocabTestResult} onCreateList={onCreateList} />;
@@ -1942,13 +1946,13 @@ function LeaderboardView({ profile, setProfile, uiLang, liveStats, setVocabTestR
                 : i === 2 ? { bg: "bg-gradient-to-br from-amber-600 to-amber-800", text: "text-amber-50" }
                 : null;
               return (
-                <li key={e.id} className={`flex items-center gap-3 px-4 py-3 ${e.id === profile.userId ? "bg-accent-500/10" : ""}`}>
+                <li key={e.id} className={`flex items-center gap-3 px-4 py-3 ${e.id === leaderboardUserId ? "bg-accent-500/10" : ""}`}>
                   <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
                     medal ? `${medal.bg} ${medal.text} shadow-sm` : "text-[color:var(--text-faint)]"}`}>
                     {i + 1}
                   </span>
                   <span className="flex-1 text-sm text-[color:var(--text)] truncate">
-                    {e.displayName}{e.id === profile.userId && <span className="ml-2 text-[10px] text-[color:var(--accent-text)]">{isZh ? "(你)" : "(you)"}</span>}
+                    {e.displayName}{e.id === leaderboardUserId && <span className="ml-2 text-[10px] text-[color:var(--accent-text)]">{isZh ? "(你)" : "(you)"}</span>}
                   </span>
                   <span className="text-sm font-mono text-[color:var(--text-dim)]">{e.value.toLocaleString()}</span>
                 </li>
