@@ -1055,6 +1055,68 @@ async function fetchDefinition(word, apiKey, model, provider = DEFAULT_PROVIDER)
   return JSON.parse(raw.replace(/```json|```/g, "").trim());
 }
 
+/* Defines many words in one shot instead of one request per word — much
+   faster for a batch of imports, especially on slower models. Returns a
+   map of lowercase word -> {def, vibe, coll}; batches internally at 30
+   words per request so very large lists still work in a handful of calls. */
+async function fetchDefinitionsBatch(words, apiKey, model, provider, onProgress) {
+  const system = `You are a lexicographer. Given a list of English words, define each one. Return ONLY valid JSON (no markdown, no preamble): an array with exactly one object per word, in the same order given: [{"word": string, "def": string, "vibe": "formal"|"academic"|"casual"|"literary", "coll": string}]. "def" is one clear sentence. "vibe" is the register the word most naturally belongs to. "coll" is 3 comma-separated natural collocations for that word.`;
+  const BATCH = 30;
+  const batches = [];
+  for (let i = 0; i < words.length; i += BATCH) batches.push(words.slice(i, i + BATCH));
+  const results = {};
+  for (let b = 0; b < batches.length; b++) {
+    onProgress && onProgress(b + 1, batches.length);
+    if (b > 0) await sleep(300);
+    try {
+      const raw = await callAI({ provider, apiKey, model, system, userText: `Words:\n${batches[b].join("\n")}`, maxTokens: Math.min(4000, batches[b].length * 100) });
+      const parsed = extractJsonArray(raw);
+      if (Array.isArray(parsed)) parsed.forEach((p) => { if (p?.word) results[p.word.trim().toLowerCase()] = p; });
+    } catch { /* skip this batch on failure — remaining words simply stay unfilled */ }
+  }
+  return results;
+}
+
+/* Free, keyless definition lookup via Datamuse (backed by WordNet) — works
+   for most real English words with no API key at all. This is the primary
+   definition source; AI is only used as enrichment (vibe/collocations) or
+   as a fallback for words the free dictionary doesn't recognize. */
+function cleanDatamuseDef(raw) {
+  // Datamuse defs look like "v\t(transitive) To reduce, lessen, or decrease..."
+  const tab = raw.indexOf("\t");
+  let text = tab === -1 ? raw : raw.slice(tab + 1);
+  return text.trim().replace(/\s+/g, " ");
+}
+
+async function freeDictLookup(word) {
+  const res = await fetch(`https://api.datamuse.com/words?sp=${encodeURIComponent(word.trim())}&md=d&max=1`);
+  if (!res.ok) return null;
+  const data = await res.json();
+  const entry = data[0];
+  if (!entry || !entry.defs || !entry.defs.length || entry.word.toLowerCase() !== word.trim().toLowerCase()) return null;
+  return { def: cleanDatamuseDef(entry.defs[0]) };
+}
+
+async function freeDictLookupBatch(words, onProgress) {
+  const CONCURRENCY = 6;
+  const results = {};
+  let done = 0;
+  const queue = [...words];
+  const worker = async () => {
+    while (queue.length) {
+      const word = queue.shift();
+      try {
+        const found = await freeDictLookup(word);
+        if (found) results[word.trim().toLowerCase()] = found;
+      } catch { /* word just stays unfilled */ }
+      done++;
+      onProgress && onProgress(done, words.length);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, words.length) }, worker));
+  return results;
+}
+
 const PDF_MAX_PAGES = 250;
 const PDF_VISION_MAX_PAGES = 20;
 
@@ -1327,18 +1389,40 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
   };
 
   const fillMissingDefs = async () => {
-    if (!apiKey || !preview) return;
-    const next = [...preview];
-    for (let i = 0; i < next.length; i++) {
-      if (next[i].def) continue;
-      setFilling(i + 1);
-      try {
-        const parsed = await fetchDefinition(next[i].word, apiKey, model, provider);
-        next[i] = { ...next[i], def: parsed.def || "", vibe: parsed.vibe || "formal", coll: parsed.coll || "" };
-        setPreview([...next]);
-      } catch { /* skip word on failure, keep going */ }
+    if (!preview) return;
+    const missing = preview.filter((w) => !w.def);
+    if (!missing.length) return;
+    setFilling({ current: 0, total: 1, phase: "dictionary" });
+    try {
+      // Phase 1: free dictionary lookup, no key needed — covers most real words.
+      const freeResults = await freeDictLookupBatch(
+        missing.map((w) => w.word),
+        (current, total) => setFilling({ current, total, phase: "dictionary" })
+      );
+      let next = preview.map((w) => {
+        if (w.def) return w;
+        const found = freeResults[w.word.trim().toLowerCase()];
+        return found ? { ...w, def: found.def } : w;
+      });
+      setPreview(next);
+
+      // Phase 2: AI fills whatever the free dictionary didn't recognize (rare/technical words, typos).
+      const stillMissing = next.filter((w) => !w.def);
+      if (apiKey && stillMissing.length) {
+        const aiResults = await fetchDefinitionsBatch(
+          stillMissing.map((w) => w.word), apiKey, model, provider,
+          (current, total) => setFilling({ current, total, phase: "ai" })
+        );
+        next = next.map((w) => {
+          if (w.def) return w;
+          const match = aiResults[w.word.trim().toLowerCase()];
+          return match ? { ...w, def: match.def || "", vibe: match.vibe || w.vibe, coll: match.coll || w.coll } : w;
+        });
+        setPreview(next);
+      }
+    } finally {
+      setFilling(0);
     }
-    setFilling(0);
   };
 
   const createImportedList = () => {
@@ -1469,10 +1553,12 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
               {preview.some((w) => !w.def) && (
                 <div className="flex items-center justify-between rounded-lg bg-emerald-500/5 ring-1 ring-emerald-500/20 px-4 py-2.5">
                   <p className="text-xs text-[color:var(--text-dim)]">{preview.filter((w) => !w.def).length} word(s) missing a definition.</p>
-                  <button onClick={fillMissingDefs} disabled={!apiKey || filling > 0}
+                  <button onClick={fillMissingDefs} disabled={!!filling}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-xs font-semibold hover:bg-emerald-400 disabled:opacity-40 transition shrink-0">
-                    {filling > 0 ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                    {filling > 0 ? `Filling ${filling}/${preview.length}…` : `Auto-fill with ${PROVIDERS[provider].short}`}
+                    {filling ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                    {filling
+                      ? (filling.phase === "ai" ? `Asking ${PROVIDERS[provider].short} for the rest…` : filling.total > 1 ? `Looking up ${filling.current}/${filling.total}…` : "Looking up definitions…")
+                      : "Auto-fill definitions"}
                   </button>
                 </div>
               )}
@@ -1620,11 +1706,18 @@ function Deck({ list, lists, activeListId, setActiveListId, updateList, onOpen, 
   const [lookupErr, setLookupErr] = useState(null);
 
   const lookup = async () => {
-    if (!form.word.trim() || !apiKey) return;
+    const word = form.word.trim();
+    if (!word) return;
     setLooking(true); setLookupErr(null);
     try {
-      const parsed = await fetchDefinition(form.word.trim(), apiKey, model, provider);
-      setForm((f) => ({ ...f, def: parsed.def || f.def, vibe: parsed.vibe || f.vibe, coll: parsed.coll || f.coll }));
+      const free = await freeDictLookup(word).catch(() => null);
+      if (free) setForm((f) => ({ ...f, def: f.def || free.def }));
+      if (apiKey) {
+        const parsed = await fetchDefinition(word, apiKey, model, provider);
+        setForm((f) => ({ ...f, def: f.def || parsed.def || "", vibe: parsed.vibe || f.vibe, coll: parsed.coll || f.coll }));
+      } else if (!free) {
+        setLookupErr("Couldn't find that word in the free dictionary — add an API key in Settings for AI lookup instead.");
+      }
     } catch (err) {
       setLookupErr(err.message || "Lookup failed.");
     } finally {
@@ -1701,14 +1794,13 @@ function Deck({ list, lists, activeListId, setActiveListId, updateList, onOpen, 
           </div>
 
           <div className="flex items-center justify-between rounded-lg bg-emerald-500/5 ring-1 ring-emerald-500/20 px-4 py-2.5">
-            <p className="text-xs text-[color:var(--text-dim)]">Type a word, then let Claude fill the definition, vibe & collocations.</p>
-            <button onClick={lookup} disabled={looking || !form.word.trim() || !apiKey}
+            <p className="text-xs text-[color:var(--text-dim)]">Type a word, then look up its definition{apiKey ? `, vibe & collocations via ${PROVIDERS[provider].short}` : " (free, no API key needed)"}.</p>
+            <button onClick={lookup} disabled={looking || !form.word.trim()}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-xs font-semibold hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition shrink-0">
               {looking ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-              {looking ? "Searching…" : `Auto-fill with ${PROVIDERS[provider].short}`}
+              {looking ? "Searching…" : "Auto-fill"}
             </button>
           </div>
-          {!apiKey && <p className="text-[11px] text-amber-700 dark:text-amber-300 -mt-1">Add your API key in Settings to enable auto-fill.</p>}
           {lookupErr && <p className="text-[11px] text-rose-700 dark:text-rose-300 -mt-1">{lookupErr}</p>}
 
           <div>
@@ -1774,12 +1866,11 @@ function Deck({ list, lists, activeListId, setActiveListId, updateList, onOpen, 
                 className="bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50">
                 {["formal", "academic", "casual", "literary"].map((v) => <option key={v}>{v}</option>)}
               </select>
-              <button onClick={lookup} disabled={looking || !form.word.trim() || !apiKey}
+              <button onClick={lookup} disabled={looking || !form.word.trim()}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition">
                 {looking ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                {looking ? "Searching…" : `Auto-fill with ${PROVIDERS[provider].short}`}
+                {looking ? "Searching…" : "Auto-fill"}
               </button>
-              {!apiKey && <p className="text-xs text-amber-700 dark:text-amber-300">Add your API key in Settings to enable auto-fill.</p>}
               {lookupErr && <p className="text-xs text-rose-700 dark:text-rose-300">{lookupErr}</p>}
             </div>
 
