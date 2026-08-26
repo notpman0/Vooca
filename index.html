@@ -165,11 +165,42 @@ const QUIZ_MODES = [
   { id: "adaptive", label: "Adaptive Test", desc: "Multiple-choice & fill-in questions, missed words repeat." },
   { id: "deep", label: "Deep Memorize", desc: "Self-rate each due word until it's back to 100%." },
 ];
-const MODELS = [
-  { id: "claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet" },
-  { id: "claude-3-5-haiku-20241022", label: "Claude 3.5 Haiku" },
-  { id: "claude-3-opus-20240229", label: "Claude 3 Opus" },
-];
+const OPENAI_PROXY_URL = "https://vbmaster-proxy.notpman0.workers.dev/openai";
+
+const PROVIDERS = {
+  anthropic: {
+    label: "Anthropic (Claude)", short: "Claude", free: false,
+    keyPlaceholder: "sk-ant-...",
+    keyHelp: "Paid — get a key at console.anthropic.com",
+    models: [
+      { id: "claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet — most capable" },
+      { id: "claude-3-5-haiku-20241022", label: "Claude 3.5 Haiku — fastest" },
+      { id: "claude-3-opus-20240229", label: "Claude 3 Opus" },
+    ],
+  },
+  gemini: {
+    label: "Google (Gemini)", short: "Gemini", free: true,
+    keyPlaceholder: "AIza...",
+    keyHelp: "Free — get a key at aistudio.google.com/apikey",
+    models: [
+      { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash — free tier, fast" },
+      { id: "gemini-1.5-pro", label: "Gemini 1.5 Pro — more capable" },
+      { id: "gemini-1.5-flash", label: "Gemini 1.5 Flash" },
+    ],
+  },
+  openai: {
+    label: "OpenAI (GPT)", short: "GPT", free: false, needsProxy: true,
+    keyPlaceholder: "sk-...",
+    keyHelp: "Paid — get a key at platform.openai.com. Routed through a small relay since OpenAI blocks direct browser requests.",
+    models: [
+      { id: "gpt-4o", label: "GPT-4o — most capable" },
+      { id: "gpt-4o-mini", label: "GPT-4o mini — fastest" },
+    ],
+  },
+};
+const DEFAULT_PROVIDER = "anthropic";
+// Legacy alias — some helpers below still reference MODELS for Anthropic specifically.
+const MODELS = PROVIDERS.anthropic.models;
 const VIBE_EMOJI = { formal: "💼", academic: "🎓", casual: "💬", literary: "📖" };
 const LEITNER_DAYS = [0, 1, 2, 4, 7, 14, 30];
 
@@ -424,8 +455,24 @@ function AuthGate({ onAuth }) {
 /* ---------------- App ---------------- */
 function App({ onLogout }) {
   const [view, setView] = useState("dashboard");
-  const [apiKey, setApiKey] = useState(() => load(nsKey("apiKey"), ""));
-  const [model, setModel] = useState(() => load(nsKey("model"), MODELS[0].id));
+  const [provider, setProvider] = useState(() => load(nsKey("provider"), DEFAULT_PROVIDER));
+  const [providerKeys, setProviderKeys] = useState(() => {
+    const stored = load(nsKey("providerKeys"), null);
+    if (stored) return stored;
+    // one-time migration from the old single-provider (Anthropic-only) storage
+    const legacyKey = load(nsKey("apiKey"), "");
+    return legacyKey ? { anthropic: legacyKey } : {};
+  });
+  const [providerModels, setProviderModels] = useState(() => {
+    const stored = load(nsKey("providerModels"), null);
+    if (stored) return stored;
+    const legacyModel = load(nsKey("model"), "");
+    return legacyModel ? { anthropic: legacyModel } : {};
+  });
+  const apiKey = providerKeys[provider] || "";
+  const model = providerModels[provider] || PROVIDERS[provider].models[0].id;
+  const setApiKey = (key) => setProviderKeys((pk) => ({ ...pk, [provider]: key }));
+  const setModel = (m) => setProviderModels((pm) => ({ ...pm, [provider]: m }));
   const [theme, setTheme] = useState(() => load(LS.theme, "dark"));
   const [lists, setLists] = useState(() => repairListIds(load(nsKey("lists"), [
     { id: "default", name: "My Words", source: "custom", plan: null, createdAt: Date.now(), words: SEED_WORDS },
@@ -437,8 +484,9 @@ function App({ onLogout }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [showKeyModal, setShowKeyModal] = useState(false);
 
-  useEffect(() => save(nsKey("apiKey"), apiKey), [apiKey]);
-  useEffect(() => save(nsKey("model"), model), [model]);
+  useEffect(() => save(nsKey("provider"), provider), [provider]);
+  useEffect(() => save(nsKey("providerKeys"), providerKeys), [providerKeys]);
+  useEffect(() => save(nsKey("providerModels"), providerModels), [providerModels]);
   useEffect(() => save(LS.theme, theme), [theme]);
   useEffect(() => save(nsKey("lists"), lists), [lists]);
   useEffect(() => save(nsKey("activeList"), activeListId), [activeListId]);
@@ -551,7 +599,7 @@ function App({ onLogout }) {
           <div className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg ${
             apiKey ? "bg-emerald-500/10 text-[color:var(--accent-text)]" : "bg-amber-500/10 text-amber-700 dark:text-amber-300"}`}>
             {apiKey ? <ShieldCheck size={14} /> : <ShieldAlert size={14} />}
-            {apiKey ? "API connected" : "No API key"}
+            {apiKey ? `${PROVIDERS[provider].short} connected` : "No API key"}
           </div>
         </div>
       </aside>
@@ -564,14 +612,14 @@ function App({ onLogout }) {
         ) : (
           <div key={view} className="animate-fade-up">
             {view === "dashboard" && (
-              <Dashboard {...{ apiKey, masteredCount: totalMastered, totalIntroduced, todayLearned, stats, streak, activeList, learnPending, setView }} />
+              <Dashboard {...{ apiKey, provider, masteredCount: totalMastered, totalIntroduced, todayLearned, stats, streak, activeList, learnPending, setView }} />
             )}
             {view === "lists" && (
-              <WordLists {...{ lists, setLists, activeListId, setActiveListId, apiKey, model }} />
+              <WordLists {...{ lists, setLists, activeListId, setActiveListId, apiKey, model, provider }} />
             )}
             {view === "deck" && activeList && (
               <Deck list={activeList} lists={lists} setActiveListId={setActiveListId} activeListId={activeListId}
-                updateList={updateList} onOpen={(w) => openDetail(activeList.id, w.id)} apiKey={apiKey} model={model} />
+                updateList={updateList} onOpen={(w) => openDetail(activeList.id, w.id)} apiKey={apiKey} model={model} provider={provider} />
             )}
             {view === "learn" && activeList && (
               <LearnView list={activeList} updateList={updateList} setStats={setStats} registerActivity={registerActivity}
@@ -582,10 +630,10 @@ function App({ onLogout }) {
                 registerActivity={registerActivity} onOpenDetail={openDetail} setView={setView} />
             )}
             {view === "sandbox" && activeList && (
-              <Sandbox {...{ words: activeList.words, apiKey, model, setStats, registerActivity, promptKey: () => setShowKeyModal(true) }} />
+              <Sandbox {...{ words: activeList.words, apiKey, model, provider, setStats, registerActivity, promptKey: () => setShowKeyModal(true) }} />
             )}
             {view === "settings" && (
-              <SettingsView {...{ apiKey, setApiKey, model, setModel, theme, setTheme, onLogout }} />
+              <SettingsView {...{ apiKey, setApiKey, model, setModel, provider, setProvider, providerKeys, providerModels, theme, setTheme, onLogout }} />
             )}
           </div>
         )}
@@ -721,7 +769,7 @@ function DayDetail({ dateStr, dailyLearned, activeList }) {
 }
 
 /* ---------------- Dashboard ---------------- */
-function Dashboard({ apiKey, masteredCount, totalIntroduced, todayLearned, stats, streak, activeList, learnPending, setView }) {
+function Dashboard({ apiKey, provider, masteredCount, totalIntroduced, todayLearned, stats, streak, activeList, learnPending, setView }) {
   const goal = activeList?.plan?.newPerDay || 5;
   const pct = Math.min(100, Math.round((todayLearned / goal) * 100));
 
@@ -766,7 +814,7 @@ function Dashboard({ apiKey, masteredCount, totalIntroduced, todayLearned, stats
           <AlertTriangle className="text-amber-500 dark:text-amber-400 mt-0.5" size={20} />
           <div>
             <p className="text-sm font-medium text-amber-800 dark:text-amber-100">No API key yet</p>
-            <p className="text-xs text-[color:var(--text-dim)] mt-0.5">Add it under Settings to unlock Claude auto-fill and writing feedback.</p>
+            <p className="text-xs text-[color:var(--text-dim)] mt-0.5">Add a {PROVIDERS[provider].label} key under Settings to unlock AI auto-fill and writing feedback — Google Gemini has a free tier if you'd rather not pay.</p>
           </div>
         </div>
       )}
@@ -790,17 +838,20 @@ function Dashboard({ apiKey, masteredCount, totalIntroduced, todayLearned, stats
 }
 
 /* ---------------- Settings ---------------- */
-function SettingsView({ apiKey, setApiKey, model, setModel, theme, setTheme, onLogout }) {
+function SettingsView({ apiKey, setApiKey, model, setModel, provider, setProvider, providerKeys, providerModels, theme, setTheme, onLogout }) {
   const [draft, setDraft] = useState(apiKey);
   const [showKey, setShowKey] = useState(false);
   const dirty = draft !== apiKey;
   const accounts = load(LS.accounts, []);
   const account = accounts.find((a) => a.email === CURRENT_EMAIL) || null;
+  const info = PROVIDERS[provider];
   const themes = [
     { id: "light", label: "Light", icon: Sun },
     { id: "dark", label: "Dark", icon: Moon },
     { id: "system", label: "System", icon: Monitor },
   ];
+
+  useEffect(() => { setDraft(providerKeys[provider] || ""); setShowKey(false); }, [provider]);
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-8 py-6 sm:py-10">
@@ -813,11 +864,25 @@ function SettingsView({ apiKey, setApiKey, model, setModel, theme, setTheme, onL
         <h3 className="text-sm font-semibold text-[color:var(--text)] mb-4 flex items-center gap-2">
           <Key size={15} className="text-[color:var(--accent-text)]" /> API Settings
         </h3>
-        <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Anthropic API key</label>
-        <div className="flex gap-2 mb-5">
+
+        <label className="block text-xs text-[color:var(--text-dim)] mb-2">AI provider</label>
+        <div className="grid grid-cols-3 gap-2 mb-5">
+          {Object.entries(PROVIDERS).map(([id, p]) => (
+            <button key={id} onClick={() => setProvider(id)}
+              className={`relative text-left rounded-lg ring-1 px-3 py-2.5 transition ${
+                provider === id ? "bg-emerald-500/10 ring-emerald-500/40" : "ring-[color:var(--border)] hover:ring-emerald-500/20"}`}>
+              {p.free && <span className="absolute top-1.5 right-1.5 text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-[color:var(--accent-text)]">Free</span>}
+              <p className={`text-sm font-medium ${provider === id ? "text-[color:var(--accent-text)]" : "text-[color:var(--text)]"}`}>{p.short}</p>
+              <p className="text-[10px] text-[color:var(--text-faint)] mt-0.5">{providerKeys[id] ? "Key saved" : "No key yet"}</p>
+            </button>
+          ))}
+        </div>
+
+        <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">{info.label} API key</label>
+        <div className="flex gap-2 mb-2">
           <div className="relative flex-1">
             <input type="text" value={draft} onChange={(e) => setDraft(e.target.value)}
-              placeholder="sk-ant-..." autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
+              placeholder={info.keyPlaceholder} autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
               data-lpignore="true" data-1p-ignore="true" data-bwignore="true" name="vcw-secret-not-a-password"
               style={showKey ? undefined : { WebkitTextSecurity: "disc" }}
               className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg pl-3 pr-10 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50 font-mono" />
@@ -831,12 +896,18 @@ function SettingsView({ apiKey, setApiKey, model, setModel, theme, setTheme, onL
             Save
           </button>
         </div>
-        <p className="text-[11px] text-[color:var(--text-faint)] mb-5 -mt-3">Stored only in this browser's localStorage for this account. Never sent anywhere except Anthropic — and never saved to your browser's password manager.</p>
+        <p className="text-[11px] text-[color:var(--text-faint)] mb-1">{info.keyHelp}</p>
+        <p className="text-[11px] text-[color:var(--text-faint)] mb-5">Stored only in this browser's localStorage for this account, scoped to {info.label}. Never saved to your browser's password manager.</p>
+        {info.needsProxy && (
+          <p className="text-[11px] text-amber-700 dark:text-amber-300 mb-5 -mt-3">
+            OpenAI blocks direct requests from browsers, so this key is relayed through a small stateless proxy that forwards it straight to OpenAI without storing it.
+          </p>
+        )}
 
-        <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Claude model</label>
+        <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Model</label>
         <select value={model} onChange={(e) => setModel(e.target.value)}
           className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50">
-          {MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+          {info.models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
         </select>
       </section>
 
@@ -869,17 +940,13 @@ function SettingsView({ apiKey, setApiKey, model, setModel, theme, setTheme, onL
 /* ---------------- Word Lists ---------------- */
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function callClaude(body, apiKey, { retries = 3 } = {}) {
+async function fetchWithRetry(url, options, { retries = 3 } = {}) {
   let lastErr;
   for (let attempt = 0; attempt <= retries; attempt++) {
     if (attempt > 0) await sleep(Math.min(8000, 800 * 2 ** attempt) + Math.random() * 300);
     let res;
     try {
-      res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
-        body: JSON.stringify(body),
-      });
+      res = await fetch(url, options);
     } catch (netErr) {
       lastErr = new Error(`Network error — check your connection. (${netErr.message})`);
       continue;
@@ -894,12 +961,57 @@ async function callClaude(body, apiKey, { retries = 3 } = {}) {
   throw lastErr;
 }
 
-async function fetchDefinition(word, apiKey, model) {
+/* Unified entry point for all three providers. Returns plain response text.
+   Anthropic and Gemini both allow direct browser requests; OpenAI's API
+   rejects browser CORS requests outright, so it's routed through a small
+   stateless relay (see OPENAI_PROXY_URL) that only forwards the caller's
+   own key — it never stores or sees it beyond that single request. */
+async function callAI({ provider, apiKey, model, system, userText, images, maxTokens = 1024 }) {
+  if (!apiKey) throw new Error("No API key set for this provider.");
+
+  if (provider === "gemini") {
+    const parts = [];
+    if (images) images.forEach((img) => parts.push({ inline_data: { mime_type: "image/png", data: img } }));
+    parts.push({ text: userText });
+    const data = await fetchWithRetry(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
+      { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: "user", parts }],
+          generationConfig: { maxOutputTokens: maxTokens } }) }
+    );
+    const cand = data.candidates?.[0];
+    if (!cand) throw new Error(data.promptFeedback?.blockReason ? `Blocked: ${data.promptFeedback.blockReason}` : "Gemini returned no response.");
+    return (cand.content?.parts || []).map((p) => p.text || "").join("").trim();
+  }
+
+  if (provider === "openai") {
+    const content = images
+      ? [{ type: "text", text: userText }, ...images.map((img) => ({ type: "image_url", image_url: { url: `data:image/png;base64,${img}` } }))]
+      : userText;
+    const data = await fetchWithRetry(OPENAI_PROXY_URL, {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content }] }),
+    });
+    return (data.choices?.[0]?.message?.content || "").trim();
+  }
+
+  // default: anthropic
+  const content = images
+    ? [...images.map((img) => ({ type: "image", source: { type: "base64", media_type: "image/png", data: img } })), { type: "text", text: userText }]
+    : userText;
+  const data = await fetchWithRetry("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+    body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: "user", content }] }),
+  });
+  return data.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
+}
+
+async function fetchDefinition(word, apiKey, model, provider = DEFAULT_PROVIDER) {
   const system = `You are a lexicographer. Given a single English word, return ONLY valid JSON (no markdown, no preamble) matching exactly:
 {"def": string, "vibe": "formal"|"academic"|"casual"|"literary", "coll": string}
 "def" is one clear sentence. "vibe" is the register the word most naturally belongs to. "coll" is 3 comma-separated natural collocations.`;
-  const data = await callClaude({ model, max_tokens: 300, system, messages: [{ role: "user", content: `Word: ${word}` }] }, apiKey);
-  const raw = data.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
+  const raw = await callAI({ provider, apiKey, model, system, userText: `Word: ${word}`, maxTokens: 300 });
   return JSON.parse(raw.replace(/```json|```/g, "").trim());
 }
 
@@ -946,7 +1058,7 @@ async function renderPdfPagesToImages(file, pageCount, onProgress) {
   return { images, truncatedPages: pdf.numPages > n };
 }
 
-async function extractWordsFromImages(images, apiKey, model, onProgress) {
+async function extractWordsFromImages(images, apiKey, model, onProgress, provider = DEFAULT_PROVIDER) {
   const system = `You are looking at scanned or photographed pages from a vocabulary word list. Read all visible text in the image(s) and identify the actual vocabulary words being taught, along with their definitions where clearly visible. Ignore headers, page numbers, decorative elements, and instructions. Return ONLY valid JSON (no markdown, no preamble): an array of objects like [{"word": string, "def": string}]. "def" should be empty string if no definition is visible for that word. Do not invent definitions.`;
   const BATCH = 4;
   let all = [];
@@ -958,12 +1070,7 @@ async function extractWordsFromImages(images, apiKey, model, onProgress) {
     onProgress && onProgress(b + 1, batches.length);
     if (b > 0) await sleep(400);
     try {
-      const content = [
-        { type: "text", text: "Extract the vocabulary words and definitions visible in these page images." },
-        ...batches[b].map((img) => ({ type: "image", source: { type: "base64", media_type: "image/png", data: img } })),
-      ];
-      const data = await callClaude({ model, max_tokens: 4000, system, messages: [{ role: "user", content }] }, apiKey);
-      const raw = data.content.map((b2) => (b2.type === "text" ? b2.text : "")).join("").trim();
+      const raw = await callAI({ provider, apiKey, model, system, userText: "Extract the vocabulary words and definitions visible in these page images.", images: batches[b], maxTokens: 4000 });
       const parsed = extractJsonArray(raw);
       if (Array.isArray(parsed)) all = all.concat(parsed);
     } catch (err) {
@@ -991,7 +1098,7 @@ function extractJsonArray(raw) {
   return JSON.parse(cleaned.slice(start, end + 1));
 }
 
-async function extractWordsWithAI(rawText, apiKey, model, onProgress) {
+async function extractWordsWithAI(rawText, apiKey, model, onProgress, provider = DEFAULT_PROVIDER) {
   const CHUNK = 12000;
   const chunks = [];
   for (let i = 0; i < rawText.length; i += CHUNK) chunks.push(rawText.slice(i, i + CHUNK));
@@ -1010,8 +1117,7 @@ Rules:
     onProgress && onProgress(i + 1, capped.length);
     if (i > 0) await sleep(400);
     try {
-      const data = await callClaude({ model, max_tokens: 4000, system, messages: [{ role: "user", content: `Raw text:\n"""${capped[i]}"""` }] }, apiKey);
-      const raw = data.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
+      const raw = await callAI({ provider, apiKey, model, system, userText: `Raw text:\n"""${capped[i]}"""`, maxTokens: 4000 });
       const parsed = extractJsonArray(raw);
       if (Array.isArray(parsed)) all = all.concat(parsed);
     } catch (err) {
@@ -1031,16 +1137,15 @@ Rules:
   return { words: deduped, failedChunks, totalChunks: capped.length, truncated: chunks.length > capped.length, lastError };
 }
 
-async function suggestPlanWithAI(words, apiKey, model) {
+async function suggestPlanWithAI(words, apiKey, model, provider = DEFAULT_PROVIDER) {
   const system = `You are a spaced-repetition learning coach. Given the size of a vocabulary list (and a sample of its words), recommend a sustainable daily study plan so a learner fully memorizes the whole list without burning out: how many brand-new words to introduce per day, and how many previously-learned words to review per day. Return ONLY valid JSON (no markdown, no preamble): {"newPerDay": number, "reviewPerDay": number, "estimatedDays": number, "rationale": string}. "rationale" is one short sentence (under 140 characters) explaining the pacing.`;
   const sample = words.slice(0, 25).map((w) => w.word).join(", ");
   const user = `Total words: ${words.length}. Sample: ${sample}${words.length > 25 ? ", …" : ""}.`;
-  const data = await callClaude({ model, max_tokens: 300, system, messages: [{ role: "user", content: user }] }, apiKey);
-  const raw = data.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
+  const raw = await callAI({ provider, apiKey, model, system, userText: user, maxTokens: 300 });
   return extractJsonArray(`[${raw.replace(/```json|```/g, "").trim()}]`)[0];
 }
 
-function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, model }) {
+function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, model, provider }) {
   const [importText, setImportText] = useState("");
   const [importName, setImportName] = useState("");
   const [preview, setPreview] = useState(null);
@@ -1088,12 +1193,12 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
     setAiParsing(true); setAiError(null); setAiNotice(null); setAiProgress(null);
     try {
       const { words: found, failedChunks, totalChunks, truncated, lastError } = await extractWordsWithAI(
-        text, apiKey, model, (current, total) => setAiProgress({ current, total })
+        text, apiKey, model, (current, total) => setAiProgress({ current, total }), provider
       );
       if (!found.length) {
         setAiError(failedChunks
-          ? `Claude couldn't process that text — ${lastError || "the request kept failing"}. Try again in a moment, or use "Parse words" instead.`
-          : "Claude couldn't find any vocabulary words in that text — try pasting a cleaner excerpt.");
+          ? `${PROVIDERS[provider].short} couldn't process that text — ${lastError || "the request kept failing"}. Try again in a moment, or use "Parse words" instead.`
+          : `${PROVIDERS[provider].short} couldn't find any vocabulary words in that text — try pasting a cleaner excerpt.`);
         return false;
       }
       const words = found.map((w) => freshWord({ word: w.word, def: w.def, vibe: "formal", coll: "" }));
@@ -1121,12 +1226,12 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
     setAiParsing(true); setAiError(null); setAiNotice(null); setAiProgress(null);
     try {
       const { words: found, failedBatches, totalBatches, lastError } = await extractWordsFromImages(
-        images, apiKey, model, (current, total) => setAiProgress({ current, total })
+        images, apiKey, model, (current, total) => setAiProgress({ current, total }), provider
       );
       if (!found.length) {
         setAiError(failedBatches
-          ? `Claude couldn't read those page images — ${lastError || "the request kept failing"}. Try again in a moment.`
-          : "Claude couldn't make out any vocabulary words in those page images — try a clearer scan or paste the words manually.");
+          ? `${PROVIDERS[provider].short} couldn't read those page images — ${lastError || "the request kept failing"}. Try again in a moment.`
+          : `${PROVIDERS[provider].short} couldn't make out any vocabulary words in those page images — try a clearer scan or paste the words manually.`);
         return false;
       }
       const words = found.map((w) => freshWord({ word: w.word, def: w.def, vibe: "formal", coll: "" }));
@@ -1154,8 +1259,8 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
       if (!text.trim() || looksScanned) {
         if (!apiKey) {
           setPdfError(!text.trim()
-            ? "This PDF doesn't contain selectable text — it looks like a scanned or photographed document. Add an API key in Settings so Claude can read the page images directly."
-            : "Most of this PDF's pages don't have selectable text — it looks partly scanned. Add an API key in Settings so Claude can read the page images directly.");
+            ? `This PDF doesn't contain selectable text — it looks like a scanned or photographed document. Add an API key in Settings so ${PROVIDERS[provider].short} can read the page images directly.`
+            : `Most of this PDF's pages don't have selectable text — it looks partly scanned. Add an API key in Settings so ${PROVIDERS[provider].short} can read the page images directly.`);
           setPdfLoading(false);
           return;
         }
@@ -1188,7 +1293,7 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
       if (next[i].def) continue;
       setFilling(i + 1);
       try {
-        const parsed = await fetchDefinition(next[i].word, apiKey, model);
+        const parsed = await fetchDefinition(next[i].word, apiKey, model, provider);
         next[i] = { ...next[i], def: parsed.def || "", vibe: parsed.vibe || "formal", coll: parsed.coll || "" };
         setPreview([...next]);
       } catch { /* skip word on failure, keep going */ }
@@ -1209,7 +1314,7 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
     if (!apiKey || !preview) return;
     setPlanLoading(true); setPlanError(null);
     try {
-      const suggestion = await suggestPlanWithAI(preview, apiKey, model);
+      const suggestion = await suggestPlanWithAI(preview, apiKey, model, provider);
       if (suggestion && Number.isFinite(suggestion.newPerDay)) {
         setPlanDraft({ newPerDay: Math.max(1, Math.round(suggestion.newPerDay)), reviewPerDay: Math.max(1, Math.round(suggestion.reviewPerDay || suggestion.newPerDay * 2)) });
         setPlanRationale(suggestion.rationale || null);
@@ -1235,7 +1340,7 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
     if (!apiKey) return;
     setPlanLoading(true); setPlanError(null);
     try {
-      const suggestion = await suggestPlanWithAI(list.words, apiKey, model);
+      const suggestion = await suggestPlanWithAI(list.words, apiKey, model, provider);
       if (suggestion && Number.isFinite(suggestion.newPerDay)) {
         setEditPlanDraft({ newPerDay: Math.max(1, Math.round(suggestion.newPerDay)), reviewPerDay: Math.max(1, Math.round(suggestion.reviewPerDay || suggestion.newPerDay * 2)) });
         setPlanRationale(suggestion.rationale || null);
@@ -1292,7 +1397,7 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
                 <button onClick={runAiExtract} disabled={!importText.trim() || !apiKey || aiParsing}
                   className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 disabled:opacity-40 transition">
                   {aiParsing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                  {aiParsing ? `Analyzing${aiProgress ? ` ${aiProgress.current}/${aiProgress.total}` : ""}…` : "Analyze with Claude"}
+                  {aiParsing ? `Analyzing${aiProgress ? ` ${aiProgress.current}/${aiProgress.total}` : ""}…` : `Analyze with ${PROVIDERS[provider].short}`}
                 </button>
                 <span className="text-xs text-[color:var(--text-faint)]">or</span>
                 <input ref={fileRef} type="file" accept="application/pdf" className="hidden" onChange={handlePdfUpload} />
@@ -1308,8 +1413,8 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
               {aiError && <p className="text-[11px] text-rose-700 dark:text-rose-300">{aiError}</p>}
               {aiNotice && <p className="text-[11px] text-amber-700 dark:text-amber-300">{aiNotice}</p>}
               <p className="text-[11px] text-[color:var(--text-faint)]">
-                "Parse words" is a quick local split by line. If your text has definitions, example sentences, or other clutter mixed in (common with PDFs), use <span className="font-medium">Analyze with Claude</span> instead — it reads the whole thing and pulls out just the real vocabulary words and their definitions{!apiKey ? " (needs an API key in Settings)" : ""}.
-                {apiKey ? " PDFs are scanned by Claude automatically after upload — even scanned/photographed pages with no selectable text, since Claude reads the page images directly." : " Add an API key in Settings and PDFs will be scanned automatically after upload, including scanned/photographed pages with no selectable text."}
+                "Parse words" is a quick local split by line. If your text has definitions, example sentences, or other clutter mixed in (common with PDFs), use <span className="font-medium">Analyze with {PROVIDERS[provider].short}</span> instead — it reads the whole thing and pulls out just the real vocabulary words and their definitions{!apiKey ? " (needs an API key in Settings)" : ""}.
+                {apiKey ? ` PDFs are scanned by ${PROVIDERS[provider].short} automatically after upload — even scanned/photographed pages with no selectable text, since it reads the page images directly.` : " Add an API key in Settings and PDFs will be scanned automatically after upload, including scanned/photographed pages with no selectable text."}
               </p>
             </>
           ) : (
@@ -1327,7 +1432,7 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
                   <button onClick={fillMissingDefs} disabled={!apiKey || filling > 0}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-xs font-semibold hover:bg-emerald-400 disabled:opacity-40 transition shrink-0">
                     {filling > 0 ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                    {filling > 0 ? `Filling ${filling}/${preview.length}…` : "Auto-fill with Claude"}
+                    {filling > 0 ? `Filling ${filling}/${preview.length}…` : `Auto-fill with ${PROVIDERS[provider].short}`}
                   </button>
                 </div>
               )}
@@ -1365,7 +1470,7 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
                         <button onClick={optimizePlanWithAI} disabled={planLoading}
                           className="flex items-center gap-1 text-[11px] text-sky-700 dark:text-sky-300 hover:underline disabled:opacity-50">
                           {planLoading ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
-                          {planLoading ? "Optimizing…" : "Let Claude optimize this plan"}
+                          {planLoading ? "Optimizing…" : `Let ${PROVIDERS[provider].short} optimize this plan`}
                         </button>
                       )}
                     </div>
@@ -1433,7 +1538,7 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
                           <button onClick={() => optimizeExistingPlanWithAI(l)} disabled={planLoading}
                             className="flex items-center gap-1 text-[11px] text-sky-700 dark:text-sky-300 hover:underline disabled:opacity-50">
                             {planLoading ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
-                            {planLoading ? "Optimizing…" : "Let Claude optimize this plan"}
+                            {planLoading ? "Optimizing…" : `Let ${PROVIDERS[provider].short} optimize this plan`}
                           </button>
                         ) : <span />}
                         <div className="flex gap-2">
@@ -1466,7 +1571,7 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
 }
 
 /* ---------------- Vocab Deck ---------------- */
-function Deck({ list, lists, activeListId, setActiveListId, updateList, onOpen, apiKey, model }) {
+function Deck({ list, lists, activeListId, setActiveListId, updateList, onOpen, apiKey, model, provider }) {
   const empty = { word: "", def: "", vibe: "formal", coll: "" };
   const [form, setForm] = useState(empty);
   const [open, setOpen] = useState(false);
@@ -1478,7 +1583,7 @@ function Deck({ list, lists, activeListId, setActiveListId, updateList, onOpen, 
     if (!form.word.trim() || !apiKey) return;
     setLooking(true); setLookupErr(null);
     try {
-      const parsed = await fetchDefinition(form.word.trim(), apiKey, model);
+      const parsed = await fetchDefinition(form.word.trim(), apiKey, model, provider);
       setForm((f) => ({ ...f, def: parsed.def || f.def, vibe: parsed.vibe || f.vibe, coll: parsed.coll || f.coll }));
     } catch (err) {
       setLookupErr(err.message || "Lookup failed.");
@@ -1560,7 +1665,7 @@ function Deck({ list, lists, activeListId, setActiveListId, updateList, onOpen, 
             <button onClick={lookup} disabled={looking || !form.word.trim() || !apiKey}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 text-[#0a0e14] text-xs font-semibold hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition shrink-0">
               {looking ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-              {looking ? "Searching…" : "Auto-fill with Claude"}
+              {looking ? "Searching…" : `Auto-fill with ${PROVIDERS[provider].short}`}
             </button>
           </div>
           {!apiKey && <p className="text-[11px] text-amber-700 dark:text-amber-300 -mt-1">Add your API key in Settings to enable auto-fill.</p>}
@@ -1632,7 +1737,7 @@ function Deck({ list, lists, activeListId, setActiveListId, updateList, onOpen, 
               <button onClick={lookup} disabled={looking || !form.word.trim() || !apiKey}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition">
                 {looking ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                {looking ? "Searching…" : "Auto-fill with Claude"}
+                {looking ? "Searching…" : `Auto-fill with ${PROVIDERS[provider].short}`}
               </button>
               {!apiKey && <p className="text-xs text-amber-700 dark:text-amber-300">Add your API key in Settings to enable auto-fill.</p>}
               {lookupErr && <p className="text-xs text-rose-700 dark:text-rose-300">{lookupErr}</p>}
@@ -2576,7 +2681,7 @@ function ChoiceButton({ label, selected, feedback, isAnswer, onClick }) {
 }
 
 /* ---------------- Practice Sandbox ---------------- */
-function Sandbox({ words, apiKey, model, setStats, registerActivity, promptKey }) {
+function Sandbox({ words, apiKey, model, provider, setStats, registerActivity, promptKey }) {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState(null);
@@ -2617,27 +2722,7 @@ Student paragraph:
 Assess: (1) Contextual accuracy — right meaning and tone per word. (2) Collocation check — natural pairings. (3) A rewrite that sounds more natural/professional. Respond with the JSON only.`;
 
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: 1500,
-          system,
-          messages: [{ role: "user", content: user }],
-        }),
-      });
-      if (!res.ok) {
-        const e = await res.json().catch(() => ({}));
-        throw new Error(e?.error?.message || `Request failed (${res.status})`);
-      }
-      const data = await res.json();
-      const raw = data.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
+      const raw = await callAI({ provider, apiKey, model, system, userText: user, maxTokens: 1500 });
       const clean = raw.replace(/```json|```/g, "").trim();
       const parsed = JSON.parse(clean);
       setFeedback(parsed);
@@ -2696,7 +2781,7 @@ Assess: (1) Contextual accuracy — right meaning and tone per word. (2) Colloca
             <button onClick={analyze} disabled={loading}
               className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 text-[#0a0e14] text-sm font-semibold hover:from-emerald-400 hover:to-teal-400 disabled:opacity-50 transition">
               {loading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-              {loading ? "Analyzing…" : "Analyze with Claude"}
+              {loading ? "Analyzing…" : `Analyze with ${PROVIDERS[provider].short}`}
             </button>
           </div>
 
@@ -2783,7 +2868,7 @@ function KeyModal({ onClose, onGo }) {
         </div>
         <h3 className="text-lg font-semibold text-[color:var(--text)] mb-2">Add your API key first</h3>
         <p className="text-sm text-[color:var(--text-dim)] mb-6 leading-relaxed">
-          Claude needs your Anthropic API key to analyze your writing. Add it in Settings — it stays in your browser.
+          An AI API key is needed to analyze your writing. Add one (Claude, Gemini, or GPT) in Settings — it stays in your browser.
         </p>
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-lg text-sm text-[color:var(--text-dim)] hover:text-[color:var(--text)] ring-1 ring-[color:var(--border)]">Not now</button>
