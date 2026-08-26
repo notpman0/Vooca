@@ -103,6 +103,7 @@ const ChevronRight = (p) => <Icon {...p} path='<polyline points="9 18 15 12 9 6"
 const ChevronLeft = (p) => <Icon {...p} path='<polyline points="15 18 9 12 15 6"/>' />;
 const Menu = (p) => <Icon {...p} path='<line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/>' />;
 const Expand = (p) => <Icon {...p} path='<path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/>' />;
+const Search = (p) => <Icon {...p} path='<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>' />;
 const Eye = (p) => <Icon {...p} path='<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/>' />;
 const EyeOff = (p) => <Icon {...p} path='<path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-3.16 4.34M6.6 6.6C3.9 8.3 2 12 2 12s4 8 11 8a10.9 10.9 0 0 0 5-1.2M9.9 9.9a3 3 0 1 0 4.2 4.2"/><line x1="1" y1="1" x2="23" y2="23"/>' />;
 const Quote = (p) => <Icon {...p} path='<path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 0-1 0"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 0-1 0"/>' />;
@@ -535,6 +536,7 @@ function App({ onLogout }) {
     { id: "deck", label: "Vocab Deck", sub: "背", icon: Layers },
     { id: "learn", label: "Learn", sub: "学", icon: GraduationCap },
     { id: "quiz", label: "Quick Test", sub: "测", icon: Zap },
+    { id: "search", label: "Dictionary", sub: "查", icon: Search },
     { id: "sandbox", label: "Practice Sandbox", sub: "写", icon: PenLine },
     { id: "settings", label: "Settings", icon: Settings },
   ];
@@ -626,6 +628,9 @@ function App({ onLogout }) {
             {view === "quiz" && activeList && (
               <QuizView list={activeList} allWords={allWords} updateList={updateList} setStats={setStats}
                 registerActivity={registerActivity} onOpenDetail={openDetail} setView={setView} />
+            )}
+            {view === "search" && (
+              <SearchView activeList={activeList} updateList={updateList} apiKey={apiKey} model={model} provider={provider} onOpenDetail={openDetail} />
             )}
             {view === "sandbox" && activeList && (
               <Sandbox {...{ words: activeList.words, apiKey, model, provider, setStats, registerActivity, promptKey: () => setShowKeyModal(true) }} />
@@ -1095,6 +1100,21 @@ async function freeDictLookup(word) {
   const entry = data[0];
   if (!entry || !entry.defs || !entry.defs.length || entry.word.toLowerCase() !== word.trim().toLowerCase()) return null;
   return { def: cleanDatamuseDef(entry.defs[0]) };
+}
+
+async function searchDictionary(word, apiKey, model, provider) {
+  const free = await freeDictLookup(word).catch(() => null);
+  let extra = null;
+  if (apiKey) {
+    const system = `You are a bilingual English-Chinese dictionary. Given an English word, respond with ONLY valid JSON (no markdown, no preamble): {"def": string, "chinese": string, "vibe": "formal"|"academic"|"casual"|"literary", "coll": string}. "def" is one clear English sentence (only needed if you're confident; otherwise empty string). "chinese" is a concise Simplified Chinese translation/definition. "coll" is 3 comma-separated natural English collocations.`;
+    try {
+      const raw = await callAI({ provider, apiKey, model, system, userText: `Word: ${word}`, maxTokens: 250 });
+      extra = JSON.parse(raw.replace(/```json|```/g, "").trim());
+    } catch { /* Chinese/enrichment is optional — English def alone is still useful */ }
+  }
+  const def = free?.def || extra?.def || "";
+  if (!def && !extra) return null;
+  return { word, def, chinese: extra?.chinese || "", vibe: extra?.vibe || "formal", coll: extra?.coll || "" };
 }
 
 async function freeDictLookupBatch(words, onProgress) {
@@ -2170,7 +2190,18 @@ function MemorizeSession({ list, pool, updateList, setStats, registerActivity, o
   const doneCount = Object.values(data).filter((d) => d.done).length;
   const coll = (word.coll || "").split(",").map((c) => c.trim()).filter(Boolean);
   const examples = buildExamples(word);
-  const rateColor = cur.memRate >= 70 ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : cur.memRate >= 40 ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-rose-500/15 text-rose-700 dark:text-rose-300";
+
+  const previewRate = (rating) => {
+    if (!cur.memStarted) return rating === "know" ? 100 : rating === "blurry" ? 20 : 0;
+    return rating === "know" ? Math.min(100, cur.memRate + 20) : rating === "blurry" ? Math.min(100, cur.memRate + 10) : cur.memRate;
+  };
+  const highlightWord = (sentence) => {
+    const re = new RegExp(`(${word.word})`, "i");
+    const parts = sentence.split(re);
+    return parts.map((p, i) => re.test(p) && p.toLowerCase() === word.word.toLowerCase()
+      ? <span key={i} className="text-[color:var(--accent-text)] font-semibold">{p}</span>
+      : <span key={i}>{p}</span>);
+  };
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-8 py-6 sm:py-10">
@@ -2182,28 +2213,37 @@ function MemorizeSession({ list, pool, updateList, setStats, registerActivity, o
         <div className="h-full bg-emerald-500 transition-all" style={{ width: `${(doneCount / pool.length) * 100}%` }} />
       </div>
 
-      <div className="rounded-2xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-8 min-h-[320px] flex flex-col">
-        <div className="flex items-center justify-between mb-4">
-          <span className="text-2xl">{VIBE_EMOJI[word.vibe] || "✨"}</span>
-          <span className={`text-[11px] font-medium px-2.5 py-1 rounded-full ${rateColor}`}>{cur.memRate}% memorized</span>
+      <div className="rounded-2xl overflow-hidden bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] min-h-[360px] flex flex-col">
+        <div className="px-8 py-7 bg-gradient-to-br from-teal-500/25 via-emerald-500/15 to-transparent border-b border-[color:var(--border)]">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-2xl">{VIBE_EMOJI[word.vibe] || "✨"}</span>
+            <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-black/10 dark:bg-white/10 text-[color:var(--text)]">{cur.memRate}% memorized</span>
+          </div>
+          <h3 className="text-4xl sm:text-5xl font-bold text-[color:var(--text)] tracking-tight">{word.word}</h3>
+          <p className="text-xs uppercase tracking-widest text-[color:var(--text-faint)] mt-1">{word.vibe}</p>
         </div>
 
-        <div className="flex-1 flex flex-col items-center justify-center text-center">
-          <h3 className="text-4xl font-bold text-[color:var(--text)] mb-5">{word.word}</h3>
-
+        <div className="flex-1 flex flex-col justify-center px-8 py-6">
           {!showDetails ? (
-            <button onClick={() => setShowDetails(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 transition">
-              <Sparkles size={14} /> Show definition & details
-            </button>
+            <div className="text-center py-6">
+              <button onClick={() => setShowDetails(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-semibold hover:bg-emerald-400 transition">
+                <Sparkles size={14} /> Show definition & details
+              </button>
+            </div>
           ) : (
-            <div className="text-left w-full space-y-3 mt-2">
+            <div className="text-left w-full space-y-4">
               <p className="text-base text-[color:var(--text)] leading-relaxed">{word.def}</p>
-              <div className="space-y-1.5">
-                {examples.slice(0, 2).map((s, i) => (
-                  <p key={i} className="text-sm text-[color:var(--text-dim)] italic leading-relaxed">{s}</p>
-                ))}
-              </div>
+              {examples.length > 0 && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-[color:var(--text-faint)] mb-1.5">Example</p>
+                  <div className="space-y-1.5">
+                    {examples.slice(0, 2).map((s, i) => (
+                      <p key={i} className="text-sm text-[color:var(--text-dim)] italic leading-relaxed">{highlightWord(s)}</p>
+                    ))}
+                  </div>
+                </div>
+              )}
               {coll.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {coll.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 text-[color:var(--accent-text)] ring-1 ring-emerald-500/30">{c}</span>)}
@@ -2214,22 +2254,25 @@ function MemorizeSession({ list, pool, updateList, setStats, registerActivity, o
         </div>
 
         {showDetails && (
-          <div className="mt-6">
+          <div className="px-8 pb-8">
             <p className="text-xs text-[color:var(--text-faint)] mb-2 text-center">
               {cur.memStarted ? "How well do you remember it now?" : "Did you already know this word?"}
             </p>
             <div className="flex gap-2">
               <button onClick={() => rate("forgot")}
                 className="flex-1 py-2.5 rounded-lg text-sm font-medium ring-1 bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-rose-500/30 hover:bg-rose-500/15 transition">
-                I forgot
+                <span className="block">I forgot</span>
+                <span className="block text-[10px] opacity-70 mt-0.5">stays at {previewRate("forgot")}%</span>
               </button>
               <button onClick={() => rate("blurry")}
                 className="flex-1 py-2.5 rounded-lg text-sm font-medium ring-1 bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-amber-500/30 hover:bg-amber-500/15 transition">
-                Blurry
+                <span className="block">Blurry</span>
+                <span className="block text-[10px] opacity-70 mt-0.5">→ {previewRate("blurry")}%</span>
               </button>
               <button onClick={() => rate("know")}
                 className="flex-1 py-2.5 rounded-lg text-sm font-medium ring-1 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-emerald-500/30 hover:bg-emerald-500/15 transition">
-                I remember it
+                <span className="block">I remember it</span>
+                <span className="block text-[10px] opacity-70 mt-0.5">{previewRate("know") >= 100 ? "mastered!" : `→ ${previewRate("know")}%`}</span>
               </button>
             </div>
           </div>
@@ -2808,6 +2851,145 @@ function ChoiceButton({ label, selected, feedback, isAnswer, onClick }) {
       className={`w-full text-left px-4 py-3 rounded-lg ring-1 text-sm transition-all duration-150 ${style}`}>
       {label}
     </button>
+  );
+}
+
+/* ---------------- Dictionary Search ---------------- */
+function SearchView({ activeList, updateList, apiKey, model, provider, onOpenDetail }) {
+  const [query, setQuery] = useState("");
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [recent, setRecent] = useState(() => load(nsKey("recentSearches"), []));
+  const [added, setAdded] = useState(false);
+
+  useEffect(() => save(nsKey("recentSearches"), recent), [recent]);
+
+  const runSearch = async (word) => {
+    const w = word.trim();
+    if (!w) return;
+    setLoading(true); setError(null); setResult(null); setAdded(false);
+    try {
+      const found = await searchDictionary(w, apiKey, model, provider);
+      if (!found) {
+        setError(apiKey
+          ? "Couldn't find a definition for that word."
+          : "Couldn't find that word in the free dictionary — add an API key in Settings for AI-powered lookup on rarer words.");
+        return;
+      }
+      setResult(found);
+      setRecent((r) => [w, ...r.filter((x) => x.toLowerCase() !== w.toLowerCase())].slice(0, 10));
+    } catch (err) {
+      setError(err.message || "Search failed.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const addToList = () => {
+    if (!result || !activeList) return;
+    updateList(activeList.id, (l) => ({
+      ...l,
+      words: [freshWord({ word: result.word, def: result.def, vibe: result.vibe, coll: result.coll }), ...l.words],
+    }));
+    setAdded(true);
+  };
+
+  const examples = result ? buildExamples(result) : [];
+  const coll = result ? (result.coll || "").split(",").map((c) => c.trim()).filter(Boolean) : [];
+
+  return (
+    <div className="max-w-2xl mx-auto px-4 sm:px-8 py-6 sm:py-10">
+      <header className="mb-8">
+        <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)] mb-1">Dictionary</p>
+        <h2 className="text-2xl font-semibold text-[color:var(--text)]">Search any word</h2>
+        <p className="text-sm text-[color:var(--text-dim)] mt-1">
+          Free English definitions for virtually any word{apiKey ? ", plus a Chinese translation and collocations." : ". Add an API key in Settings for Chinese translations too."}
+        </p>
+      </header>
+
+      <div className="flex gap-2 mb-6">
+        <div className="relative flex-1">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--text-faint)]" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && runSearch(query)}
+            placeholder="Type a word…" autoFocus
+            className="w-full bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] rounded-lg pl-9 pr-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+        </div>
+        <button onClick={() => runSearch(query)} disabled={loading || !query.trim()}
+          className="px-4 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400 disabled:opacity-40 transition flex items-center gap-1.5">
+          {loading ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
+          Search
+        </button>
+      </div>
+
+      {recent.length > 0 && !result && !loading && (
+        <div className="mb-6">
+          <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-faint)] mb-2">Recent searches</p>
+          <div className="flex flex-wrap gap-2">
+            {recent.map((w, i) => (
+              <button key={i} onClick={() => { setQuery(w); runSearch(w); }}
+                className="text-xs px-2.5 py-1 rounded-full bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] text-[color:var(--text-dim)] hover:text-[color:var(--text)] hover:ring-emerald-500/30 transition">
+                {w}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {error && <p className="text-sm text-rose-700 dark:text-rose-300 mb-4">{error}</p>}
+
+      {result && (
+        <div className="rounded-2xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-6 sm:p-8 animate-fade-up">
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <span className="text-2xl">{VIBE_EMOJI[result.vibe] || "✨"}</span>
+              <h3 className="text-3xl sm:text-4xl font-bold text-[color:var(--text)] mt-1">{result.word}</h3>
+            </div>
+            {activeList && (
+              <button onClick={addToList} disabled={added}
+                className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition disabled:opacity-60 bg-emerald-500 text-[#0a0e14] hover:bg-emerald-400 disabled:hover:bg-emerald-500">
+                {added ? <><Check size={13} /> Added</> : <><Plus size={13} /> Add to {activeList.name}</>}
+              </button>
+            )}
+          </div>
+
+          {result.def && (
+            <div className="mb-4">
+              <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-faint)] mb-1">Definition</p>
+              <p className="text-base text-[color:var(--text)] leading-relaxed">{result.def}</p>
+            </div>
+          )}
+
+          {result.chinese && (
+            <div className="mb-4">
+              <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-faint)] mb-1">中文 Chinese</p>
+              <p className="text-base text-[color:var(--text)] leading-relaxed">{result.chinese}</p>
+            </div>
+          )}
+
+          {coll.length > 0 && (
+            <div className="mb-4">
+              <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-faint)] mb-2">Collocations</p>
+              <div className="flex flex-wrap gap-2">
+                {coll.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 text-[color:var(--accent-text)] ring-1 ring-emerald-500/30">{c}</span>)}
+              </div>
+            </div>
+          )}
+
+          {result.def && (
+            <div>
+              <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-faint)] mb-2">Example sentences</p>
+              <div className="space-y-2">
+                {examples.slice(0, 2).map((s, i) => (
+                  <p key={i} className="text-sm text-[color:var(--text-dim)] italic leading-relaxed">{s}</p>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
