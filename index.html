@@ -851,6 +851,17 @@ function SettingsView({ apiKey, setApiKey, model, setModel, provider, setProvide
 
   useEffect(() => { setDraft(providerKeys[provider] || ""); setShowKey(false); }, [provider]);
 
+  const [relayStatus, setRelayStatus] = useState("checking");
+  useEffect(() => {
+    if (!PROVIDERS[provider].needsProxy) return;
+    let cancelled = false;
+    setRelayStatus("checking");
+    fetch(OPENAI_PROXY_URL, { method: "OPTIONS" })
+      .then((res) => { if (!cancelled) setRelayStatus(res.ok || res.status === 204 ? "up" : "down"); })
+      .catch(() => { if (!cancelled) setRelayStatus("down"); });
+    return () => { cancelled = true; };
+  }, [provider]);
+
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-8 py-6 sm:py-10">
       <header className="mb-8">
@@ -897,9 +908,19 @@ function SettingsView({ apiKey, setApiKey, model, setModel, provider, setProvide
         <p className="text-[11px] text-[color:var(--text-faint)] mb-1">{info.keyHelp}</p>
         <p className="text-[11px] text-[color:var(--text-faint)] mb-5">Stored only in this browser's localStorage for this account, scoped to {info.label}. Never saved to your browser's password manager.</p>
         {info.needsProxy && (
-          <p className="text-[11px] text-amber-700 dark:text-amber-300 mb-5 -mt-3">
-            OpenAI blocks direct requests from browsers, so this key is relayed through a small stateless proxy that forwards it straight to OpenAI without storing it.
-          </p>
+          <div className="mb-5 -mt-3">
+            <p className="text-[11px] text-amber-700 dark:text-amber-300">
+              OpenAI blocks direct requests from browsers, so this key is relayed through a small stateless proxy that forwards it straight to OpenAI without storing it.
+            </p>
+            <p className={`text-[11px] mt-1 flex items-center gap-1.5 ${
+              relayStatus === "up" ? "text-emerald-700 dark:text-emerald-300"
+                : relayStatus === "down" ? "text-rose-700 dark:text-rose-300"
+                : "text-[color:var(--text-faint)]"}`}>
+              {relayStatus === "checking" && <><Loader2 size={11} className="animate-spin" /> Checking relay status…</>}
+              {relayStatus === "up" && <><ShieldCheck size={11} /> Relay is live — GPT is ready to use.</>}
+              {relayStatus === "down" && <><ShieldAlert size={11} /> Relay isn't deployed yet, so GPT requests will fail with a network error. This isn't a bug in the app — the relay server just needs to be set up first.</>}
+            </p>
+          </div>
         )}
 
         <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Model</label>
@@ -964,6 +985,9 @@ async function fetchWithRetry(url, options, { retries = 3 } = {}) {
     try {
       res = await fetch(url, options);
     } catch (netErr) {
+      if (url === OPENAI_PROXY_URL) {
+        throw new Error("The GPT relay server isn't reachable — it likely hasn't been deployed yet. Check Settings for relay status, or try Claude/Gemini in the meantime.");
+      }
       lastErr = new Error(`Network error — check your connection. (${netErr.message})`);
       continue;
     }
