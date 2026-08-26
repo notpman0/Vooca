@@ -1110,10 +1110,10 @@ function Dashboard({ apiKey, provider, masteredCount, totalIntroduced, todayLear
   const pct = Math.min(100, Math.round((todayLearned / goal) * 100));
 
   const cards = [
-    { label: "Learned today", value: `${todayLearned}/${goal}`, icon: Target, tint: "text-sky-600 dark:text-sky-300" },
-    { label: "Total introduced", value: totalIntroduced, icon: BookOpen, tint: "text-emerald-600 dark:text-emerald-300" },
-    { label: "Mastered", value: masteredCount, icon: Award, tint: "text-violet-600 dark:text-violet-300" },
-    { label: "Sessions completed", value: stats.sessions, icon: Trophy, tint: "text-teal-600 dark:text-teal-300" },
+    { label: "Learned today", value: `${todayLearned}/${goal}`, icon: Target, tint: "text-sky-600 dark:text-sky-300", chip: "bg-sky-500/15", glow: "from-sky-500/10" },
+    { label: "Total introduced", value: totalIntroduced, icon: BookOpen, tint: "text-emerald-600 dark:text-emerald-300", chip: "bg-emerald-500/15", glow: "from-emerald-500/10" },
+    { label: "Mastered", value: masteredCount, icon: Award, tint: "text-violet-600 dark:text-violet-300", chip: "bg-violet-500/15", glow: "from-violet-500/10" },
+    { label: "Sessions completed", value: stats.sessions, icon: Trophy, tint: "text-amber-600 dark:text-amber-300", chip: "bg-amber-500/15", glow: "from-amber-500/10" },
   ];
 
   return (
@@ -1123,7 +1123,9 @@ function Dashboard({ apiKey, provider, masteredCount, totalIntroduced, todayLear
         <h2 className="text-2xl font-semibold text-[color:var(--text)]">Your writing cockpit</h2>
       </header>
 
-      <div className="mb-8 rounded-2xl bg-gradient-to-br from-emerald-500/15 to-teal-500/5 ring-1 ring-emerald-500/25 p-6 flex items-center gap-6 animate-fade-up">
+      <div className="relative overflow-hidden mb-8 rounded-2xl bg-gradient-to-br from-emerald-500/15 via-teal-500/8 to-sky-500/5 ring-1 ring-emerald-500/25 p-6 flex items-center gap-6 animate-fade-up">
+        <div className="pointer-events-none absolute -top-10 -right-10 h-40 w-40 rounded-full bg-emerald-400/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-14 -left-8 h-32 w-32 rounded-full bg-violet-400/10 blur-3xl" />
         <div className="h-20 w-20 rounded-full flex items-center justify-center relative shrink-0 transition-transform duration-300 hover:scale-105"
           style={{ background: `conic-gradient(#10b981 ${pct}%, rgba(120,120,120,0.18) ${pct}%)`, transition: "background 0.6s ease" }}>
           <div className="rounded-full bg-[color:var(--surface)] flex items-center justify-center text-sm font-bold text-[color:var(--text)]" style={{ height: 60, width: 60 }}>
@@ -1157,8 +1159,11 @@ function Dashboard({ apiKey, provider, masteredCount, totalIntroduced, todayLear
 
       <div className="grid grid-cols-2 gap-4 mb-8 stagger">
         {cards.map((c) => (
-          <div key={c.label} className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:shadow-black/5 hover:ring-emerald-500/25">
-            <c.icon size={18} className={c.tint} />
+          <div key={c.label}
+            className={`relative overflow-hidden rounded-xl bg-gradient-to-br ${c.glow} to-transparent bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:shadow-black/5 hover:ring-emerald-500/25`}>
+            <div className={`h-9 w-9 rounded-lg ${c.chip} flex items-center justify-center`}>
+              <c.icon size={17} className={c.tint} />
+            </div>
             <p className="text-2xl font-semibold text-[color:var(--text)] mt-3">{c.value}</p>
             <p className="text-xs text-[color:var(--text-dim)] mt-0.5">{c.label}</p>
           </div>
@@ -1408,7 +1413,9 @@ function LeaderboardView({ profile, setProfile, uiLang, liveStats, setVocabTestR
           <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)] mb-1">{isZh ? "排行榜" : "Leaderboard"}</p>
           <h2 className="text-2xl font-semibold text-[color:var(--text)]">{isZh ? "与所有学习者比拼" : "Compete with every learner"}</h2>
         </div>
-        <Trophy size={28} className="text-amber-400 shrink-0" />
+        <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-amber-300/25 to-amber-500/10 ring-1 ring-amber-400/20 flex items-center justify-center shrink-0">
+          <Trophy size={22} className="text-amber-400" />
+        </div>
       </header>
 
       {!profile.leaderboardOptIn && (
@@ -1457,18 +1464,24 @@ function LeaderboardView({ profile, setProfile, uiLang, liveStats, setVocabTestR
           <p className="p-8 text-center text-sm text-[color:var(--text-faint)]">{isZh ? "还没有人上榜，快来当第一名！" : "No one's on this board yet — be the first."}</p>
         ) : (
           <ul className="divide-y divide-[color:var(--border)]">
-            {entries.map((e, i) => (
-              <li key={e.id} className={`flex items-center gap-3 px-4 py-3 ${e.id === profile.userId ? "bg-emerald-500/10" : ""}`}>
-                <span className={`w-7 text-sm font-semibold text-center shrink-0 ${
-                  i === 0 ? "text-amber-400" : i === 1 ? "text-slate-400" : i === 2 ? "text-amber-700" : "text-[color:var(--text-faint)]"}`}>
-                  {i + 1}
-                </span>
-                <span className="flex-1 text-sm text-[color:var(--text)] truncate">
-                  {e.displayName}{e.id === profile.userId && <span className="ml-2 text-[10px] text-[color:var(--accent-text)]">{isZh ? "(你)" : "(you)"}</span>}
-                </span>
-                <span className="text-sm font-mono text-[color:var(--text-dim)]">{e.value.toLocaleString()}</span>
-              </li>
-            ))}
+            {entries.map((e, i) => {
+              const medal = i === 0 ? { bg: "bg-gradient-to-br from-amber-300 to-amber-500", text: "text-amber-950" }
+                : i === 1 ? { bg: "bg-gradient-to-br from-slate-300 to-slate-400", text: "text-slate-900" }
+                : i === 2 ? { bg: "bg-gradient-to-br from-amber-600 to-amber-800", text: "text-amber-50" }
+                : null;
+              return (
+                <li key={e.id} className={`flex items-center gap-3 px-4 py-3 ${e.id === profile.userId ? "bg-emerald-500/10" : ""}`}>
+                  <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                    medal ? `${medal.bg} ${medal.text} shadow-sm` : "text-[color:var(--text-faint)]"}`}>
+                    {i + 1}
+                  </span>
+                  <span className="flex-1 text-sm text-[color:var(--text)] truncate">
+                    {e.displayName}{e.id === profile.userId && <span className="ml-2 text-[10px] text-[color:var(--accent-text)]">{isZh ? "(你)" : "(you)"}</span>}
+                  </span>
+                  <span className="text-sm font-mono text-[color:var(--text-dim)]">{e.value.toLocaleString()}</span>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -4109,7 +4122,7 @@ function Root() {
     if (!token) return;
     let cancelled = false;
     fetch(`${AUTH_BASE}/auth/session`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => { if (!cancelled && r.status === 401) doLogout(); })
+      .then((r) => { if (!cancelled && (r.status === 401 || r.status === 404)) doLogout(); })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [authed]);
