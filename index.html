@@ -93,6 +93,9 @@ const Plus = (p) => <Icon {...p} path='<line x1="12" y1="5" x2="12" y2="19"/><li
 const Flame = (p) => <Icon {...p} path='<path d="M8.5 14.5A2.5 2.5 0 0 0 11 17a2.5 2.5 0 0 0 2.5-2.5c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7.5 7.5 0 1 1-15 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5Z"/>' />;
 const BookOpen = (p) => <Icon {...p} path='<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2Z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7Z"/>' />;
 const Trophy = (p) => <Icon {...p} path='<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0Z"/><path d="M17 5h3a3 3 0 0 1-3 5M7 5H4a3 3 0 0 0 3 5"/>' />;
+const Copy = (p) => <Icon {...p} path='<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>' />;
+const UserCircle = (p) => <Icon {...p} path='<circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M6.5 19a5.5 5.5 0 0 1 11 0"/>' />;
+const Globe = (p) => <Icon {...p} path='<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20Z"/>' />;
 const AlertTriangle = (p) => <Icon {...p} path='<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>' />;
 const Trash2 = (p) => <Icon {...p} path='<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>' />;
 const ArrowLeft = (p) => <Icon {...p} path='<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>' />;
@@ -1100,6 +1103,26 @@ async function freeDictLookup(word) {
   const entry = data[0];
   if (!entry || !entry.defs || !entry.defs.length || entry.word.toLowerCase() !== word.trim().toLowerCase()) return null;
   return { def: cleanDatamuseDef(entry.defs[0]) };
+}
+
+async function fetchSuggestions(query) {
+  const q = query.trim();
+  if (!q) return [];
+  const [sug, ml] = await Promise.all([
+    fetch(`https://api.datamuse.com/sug?s=${encodeURIComponent(q)}&max=6`).then((r) => r.json()).catch(() => []),
+    q.length >= 3
+      ? fetch(`https://api.datamuse.com/words?ml=${encodeURIComponent(q)}&max=6`).then((r) => r.json()).catch(() => [])
+      : Promise.resolve([]),
+  ]);
+  const seen = new Set();
+  const merged = [];
+  [...sug, ...ml].forEach((item) => {
+    const w = item.word.toLowerCase();
+    if (seen.has(w) || !/^[a-z][a-z '-]*$/.test(w)) return;
+    seen.add(w);
+    merged.push(item.word);
+  });
+  return merged.slice(0, 8);
 }
 
 async function searchDictionary(word, apiKey, model, provider) {
@@ -2857,17 +2880,31 @@ function ChoiceButton({ label, selected, feedback, isAnswer, onClick }) {
 /* ---------------- Dictionary Search ---------------- */
 function SearchView({ activeList, updateList, apiKey, model, provider, onOpenDetail }) {
   const [query, setQuery] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [recent, setRecent] = useState(() => load(nsKey("recentSearches"), []));
   const [added, setAdded] = useState(false);
+  const debounceRef = useRef(null);
 
   useEffect(() => save(nsKey("recentSearches"), recent), [recent]);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const q = query.trim();
+    if (q.length < 2) { setSuggestions([]); return; }
+    debounceRef.current = setTimeout(() => {
+      fetchSuggestions(q).then((s) => setSuggestions(s)).catch(() => setSuggestions([]));
+    }, 220);
+    return () => clearTimeout(debounceRef.current);
+  }, [query]);
 
   const runSearch = async (word) => {
     const w = word.trim();
     if (!w) return;
+    setShowSuggestions(false);
     setLoading(true); setError(null); setResult(null); setAdded(false);
     try {
       const found = await searchDictionary(w, apiKey, model, provider);
@@ -2878,13 +2915,16 @@ function SearchView({ activeList, updateList, apiKey, model, provider, onOpenDet
         return;
       }
       setResult(found);
-      setRecent((r) => [w, ...r.filter((x) => x.toLowerCase() !== w.toLowerCase())].slice(0, 10));
+      setQuery(w);
+      setRecent((r) => [w, ...r.filter((x) => x.toLowerCase() !== w.toLowerCase())].slice(0, 12));
     } catch (err) {
       setError(err.message || "Search failed.");
     } finally {
       setLoading(false);
     }
   };
+
+  const removeRecent = (w) => setRecent((r) => r.filter((x) => x !== w));
 
   const addToList = () => {
     if (!result || !activeList) return;
@@ -2900,38 +2940,59 @@ function SearchView({ activeList, updateList, apiKey, model, provider, onOpenDet
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-8 py-6 sm:py-10">
-      <header className="mb-8">
-        <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)] mb-1">Dictionary</p>
+      <header className="mb-6">
+        <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)] mb-1">查 · Dictionary</p>
         <h2 className="text-2xl font-semibold text-[color:var(--text)]">Search any word</h2>
         <p className="text-sm text-[color:var(--text-dim)] mt-1">
           Free English definitions for virtually any word{apiKey ? ", plus a Chinese translation and collocations." : ". Add an API key in Settings for Chinese translations too."}
         </p>
       </header>
 
-      <div className="flex gap-2 mb-6">
-        <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--text-faint)]" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && runSearch(query)}
-            placeholder="Type a word…" autoFocus
-            className="w-full bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] rounded-lg pl-9 pr-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+      <div className="relative mb-6">
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--text-faint)]" />
+            <input value={query}
+              onChange={(e) => { setQuery(e.target.value); setShowSuggestions(true); setResult(null); }}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+              onKeyDown={(e) => e.key === "Enter" && runSearch(query)}
+              placeholder="Type a word…" autoFocus
+              className="w-full bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] rounded-lg pl-9 pr-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-emerald-500/50" />
+          </div>
+          <button onClick={() => runSearch(query)} disabled={loading || !query.trim()}
+            className="px-4 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400 disabled:opacity-40 transition flex items-center gap-1.5">
+            {loading ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
+            Search
+          </button>
         </div>
-        <button onClick={() => runSearch(query)} disabled={loading || !query.trim()}
-          className="px-4 rounded-lg bg-emerald-500 text-[#0a0e14] text-sm font-medium hover:bg-emerald-400 disabled:opacity-40 transition flex items-center gap-1.5">
-          {loading ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />}
-          Search
-        </button>
+
+        {showSuggestions && suggestions.length > 0 && (
+          <div className="absolute z-10 top-full mt-1.5 left-0 right-16 rounded-lg bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] shadow-lg overflow-hidden animate-float-in">
+            {suggestions.map((s, i) => (
+              <button key={i} onMouseDown={() => runSearch(s)}
+                className="w-full text-left px-3.5 py-2 text-sm text-[color:var(--text)] hover:bg-emerald-500/10 transition flex items-center gap-2">
+                <Search size={12} className="text-[color:var(--text-faint)]" /> {s}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {recent.length > 0 && !result && !loading && (
         <div className="mb-6">
-          <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-faint)] mb-2">Recent searches</p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-faint)]">Recent searches</p>
+            <button onClick={() => setRecent([])} className="text-[11px] text-[color:var(--text-faint)] hover:text-[color:var(--text)]">Clear all</button>
+          </div>
           <div className="flex flex-wrap gap-2">
             {recent.map((w, i) => (
-              <button key={i} onClick={() => { setQuery(w); runSearch(w); }}
-                className="text-xs px-2.5 py-1 rounded-full bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] text-[color:var(--text-dim)] hover:text-[color:var(--text)] hover:ring-emerald-500/30 transition">
-                {w}
-              </button>
+              <div key={i} className="group flex items-center gap-1 text-xs pl-2.5 pr-1.5 py-1 rounded-full bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] text-[color:var(--text-dim)] hover:text-[color:var(--text)] hover:ring-emerald-500/30 transition">
+                <button onClick={() => runSearch(w)} className="hover:underline">{w}</button>
+                <button onClick={() => removeRecent(w)} className="opacity-0 group-hover:opacity-100 text-[color:var(--text-faint)] hover:text-rose-500 transition p-0.5">
+                  <X size={11} />
+                </button>
+              </div>
             ))}
           </div>
         </div>
@@ -2939,54 +3000,63 @@ function SearchView({ activeList, updateList, apiKey, model, provider, onOpenDet
 
       {error && <p className="text-sm text-rose-700 dark:text-rose-300 mb-4">{error}</p>}
 
+      {loading && (
+        <div className="flex items-center gap-2 text-sm text-[color:var(--text-faint)]">
+          <Loader2 size={14} className="animate-spin" /> Looking it up…
+        </div>
+      )}
+
       {result && (
-        <div className="rounded-2xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-6 sm:p-8 animate-fade-up">
-          <div className="flex items-start justify-between mb-4">
-            <div>
+        <div className="rounded-2xl overflow-hidden bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] animate-fade-up">
+          <div className="px-6 sm:px-8 py-7 bg-gradient-to-br from-teal-500/25 via-emerald-500/15 to-transparent border-b border-[color:var(--border)]">
+            <div className="flex items-start justify-between mb-3">
               <span className="text-2xl">{VIBE_EMOJI[result.vibe] || "✨"}</span>
-              <h3 className="text-3xl sm:text-4xl font-bold text-[color:var(--text)] mt-1">{result.word}</h3>
+              {activeList && (
+                <button onClick={addToList} disabled={added}
+                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition disabled:opacity-60 bg-emerald-500 text-[#0a0e14] hover:bg-emerald-400 disabled:hover:bg-emerald-500">
+                  {added ? <><Check size={13} /> Added</> : <><Plus size={13} /> Add to {activeList.name}</>}
+                </button>
+              )}
             </div>
-            {activeList && (
-              <button onClick={addToList} disabled={added}
-                className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition disabled:opacity-60 bg-emerald-500 text-[#0a0e14] hover:bg-emerald-400 disabled:hover:bg-emerald-500">
-                {added ? <><Check size={13} /> Added</> : <><Plus size={13} /> Add to {activeList.name}</>}
-              </button>
-            )}
+            <h3 className="text-4xl sm:text-5xl font-bold text-[color:var(--text)] tracking-tight break-words">{result.word}</h3>
+            <p className="text-xs uppercase tracking-widest text-[color:var(--text-faint)] mt-1">{result.vibe}</p>
           </div>
 
-          {result.def && (
-            <div className="mb-4">
-              <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-faint)] mb-1">Definition</p>
-              <p className="text-base text-[color:var(--text)] leading-relaxed">{result.def}</p>
-            </div>
-          )}
-
-          {result.chinese && (
-            <div className="mb-4">
-              <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-faint)] mb-1">中文 Chinese</p>
-              <p className="text-base text-[color:var(--text)] leading-relaxed">{result.chinese}</p>
-            </div>
-          )}
-
-          {coll.length > 0 && (
-            <div className="mb-4">
-              <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-faint)] mb-2">Collocations</p>
-              <div className="flex flex-wrap gap-2">
-                {coll.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 text-[color:var(--accent-text)] ring-1 ring-emerald-500/30">{c}</span>)}
+          <div className="px-6 sm:px-8 py-6 space-y-4">
+            {result.def && (
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-faint)] mb-1">Definition</p>
+                <p className="text-base text-[color:var(--text)] leading-relaxed">{result.def}</p>
               </div>
-            </div>
-          )}
+            )}
 
-          {result.def && (
-            <div>
-              <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-faint)] mb-2">Example sentences</p>
-              <div className="space-y-2">
-                {examples.slice(0, 2).map((s, i) => (
-                  <p key={i} className="text-sm text-[color:var(--text-dim)] italic leading-relaxed">{s}</p>
-                ))}
+            {result.chinese && (
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-faint)] mb-1">中文 Chinese</p>
+                <p className="text-base text-[color:var(--text)] leading-relaxed">{result.chinese}</p>
               </div>
-            </div>
-          )}
+            )}
+
+            {coll.length > 0 && (
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-faint)] mb-2">Collocations</p>
+                <div className="flex flex-wrap gap-2">
+                  {coll.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 text-[color:var(--accent-text)] ring-1 ring-emerald-500/30">{c}</span>)}
+                </div>
+              </div>
+            )}
+
+            {result.def && (
+              <div>
+                <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-faint)] mb-2">Example sentences</p>
+                <div className="space-y-1.5">
+                  {examples.slice(0, 2).map((s, i) => (
+                    <p key={i} className="text-sm text-[color:var(--text-dim)] italic leading-relaxed">{s}</p>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -3058,7 +3128,7 @@ Assess: (1) Contextual accuracy — right meaning and tone per word. (2) Colloca
     <div className="h-full flex flex-col">
       <header className="px-4 sm:px-8 pt-6 sm:pt-8 pb-4 shrink-0">
         <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)] mb-1">写 · Practice Sandbox</p>
-        <h2 className="text-2xl font-semibold text-[color:var(--text)]">Write, then let Claude read it back</h2>
+        <h2 className="text-2xl font-semibold text-[color:var(--text)]">Write, then let {PROVIDERS[provider].short} read it back</h2>
       </header>
 
       <div className="flex-1 grid grid-cols-1 md:grid-cols-[280px_1fr] gap-0 min-h-0 border-t border-[color:var(--border)]">
