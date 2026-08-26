@@ -2515,10 +2515,29 @@ function VocabSizeTest({ uiLang, onDone, onClose, setVocabTestResult, onCreateLi
 /* ---------------- Word Lists ---------------- */
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Google (and some other providers) tell you exactly how long to wait on a
+// 429, either as a RetryInfo detail or embedded in the message text (e.g.
+// "Please retry in 48.86254s."). Use that instead of guessing — a real
+// rate-limit reset is often much longer than a generic backoff would try.
+function parseRetryDelayMs(errBody) {
+  try {
+    const details = errBody?.error?.details;
+    if (Array.isArray(details)) {
+      const info = details.find((d) => String(d["@type"] || "").includes("RetryInfo"));
+      if (info?.retryDelay) {
+        const secs = parseFloat(info.retryDelay);
+        if (Number.isFinite(secs)) return Math.ceil(secs * 1000);
+      }
+    }
+    const match = String(errBody?.error?.message || "").match(/retry in ([\d.]+)\s*s/i);
+    if (match) return Math.ceil(parseFloat(match[1]) * 1000);
+  } catch { /* fall through to generic backoff */ }
+  return null;
+}
+
 async function fetchWithRetry(url, options, { retries = 3 } = {}) {
   let lastErr;
   for (let attempt = 0; attempt <= retries; attempt++) {
-    if (attempt > 0) await sleep(Math.min(8000, 800 * 2 ** attempt) + Math.random() * 300);
     let res;
     try {
       res = await fetch(url, options);
@@ -2527,16 +2546,30 @@ async function fetchWithRetry(url, options, { retries = 3 } = {}) {
         throw new Error("The GPT relay server isn't reachable — it likely hasn't been deployed yet. Check Settings for relay status, or try Claude/Gemini in the meantime.");
       }
       lastErr = new Error(`Network error — check your connection. (${netErr.message})`);
+      await sleep(Math.min(8000, 800 * 2 ** attempt) + Math.random() * 300);
       continue;
     }
     if (res.ok) return res.json();
     const e = await res.json().catch(() => ({}));
     const msg = e?.error?.message || `Request failed (HTTP ${res.status})`;
     lastErr = new Error(msg);
-    if (res.status === 429 || res.status >= 500) continue; // retryable — rate limit or server hiccup
+    if (res.status === 429 || res.status >= 500) {
+      const suggested = res.status === 429 ? parseRetryDelayMs(e) : null;
+      const delay = suggested != null ? Math.min(65000, suggested + 500) : Math.min(8000, 800 * 2 ** attempt) + Math.random() * 300;
+      await sleep(delay);
+      continue; // retryable — rate limit or server hiccup
+    }
     throw lastErr; // not retryable (bad key, bad request, etc.) — fail fast
   }
   throw lastErr;
+}
+
+// Free-tier request-per-minute limits vary a lot by provider — Gemini's free
+// tier is by far the tightest (20/min), so loops that fire several AI calls
+// in a row need real breathing room between them or they trip it almost
+// immediately. Anthropic/OpenAI don't need this.
+function providerThrottleMs(provider) {
+  return provider === "gemini" ? 3500 : 300;
 }
 
 /* Unified entry point for all three providers. Returns plain response text.
@@ -2605,7 +2638,7 @@ async function fetchDefinitionsBatch(words, apiKey, model, provider, onProgress)
   const results = {};
   for (let b = 0; b < batches.length; b++) {
     onProgress && onProgress(b + 1, batches.length);
-    if (b > 0) await sleep(300);
+    if (b > 0) await sleep(providerThrottleMs(provider));
     try {
       const raw = await callAI({ provider, apiKey, model, system, userText: `Words:\n${batches[b].join("\n")}`, maxTokens: Math.min(4000, batches[b].length * 100) });
       const parsed = extractJsonArray(raw);
@@ -2841,7 +2874,7 @@ Rules:
   let lastError = null;
   for (let i = 0; i < capped.length; i++) {
     onProgress && onProgress(i + 1, capped.length);
-    if (i > 0) await sleep(400);
+    if (i > 0) await sleep(providerThrottleMs(provider));
     try {
       const raw = await callAI({ provider, apiKey, model, system, userText: `Raw text:\n"""${capped[i]}"""`, maxTokens: 4000 });
       const parsed = extractJsonArray(raw);
