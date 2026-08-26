@@ -313,36 +313,96 @@ const VOCAB_TEST_FAKES = ["glimmerate", "trepidous", "fluxenary", "consolute", "
  * Real matches sync over the worker via short-interval polling (see
  * AUTH_BASE /battle/*) — no WebSockets/Durable Objects needed. Word content
  * never crosses the wire: both clients derive the identical round list from
- * {battleId, tier} through a seeded RNG, so only correct/ms answers sync. */
-const BATTLE_ROUNDS = 7;
+ * {battleId, rank} through a seeded RNG, so only correct/ms answers sync.
+ * This has its own word bank (BATTLE_WORD_TIERS below) rather than reusing
+ * VOCAB_TEST_TIERS — that bank is tuned for the vocab-size test's own pool
+ * math (A1..C2, "pool: 1000..20000") and touching it would drift that
+ * feature's calibration; battle ranks need their own difficulty curve and a
+ * 6th (Challenger) band the size test doesn't have. */
 const BATTLE_ROUND_MS = 8000;
 const BATTLE_QUEUE_TIMEOUT_MS = 5000;
+const BATTLE_SPEED_BONUS_WINDOW_MS = 1500;
+const BATTLE_WRONG_FREEZE_MS = 1500;
+const BATTLE_COMBO_BONUS_AT = 2; // 2 consecutive fast-correct = 2x, 3+ = 3x
+const BATTLE_WIN_STREAK_DISPLAY_AT = 2; // show the 🔥 badge starting here
+const BATTLE_WIN_STREAK_BONUS_AT = 3; // must match worker.js — MMR bonus kicks in here
 const BATTLE_RANKS = [
   { name: "Bronze", zh: "青铜", min: 0, grad: "from-amber-700 to-amber-900", text: "text-amber-500" },
   { name: "Silver", zh: "白银", min: 1000, grad: "from-slate-300 to-slate-500", text: "text-slate-300" },
   { name: "Gold", zh: "黄金", min: 1200, grad: "from-yellow-300 to-yellow-500", text: "text-yellow-400" },
   { name: "Platinum", zh: "铂金", min: 1400, grad: "from-cyan-300 to-cyan-500", text: "text-cyan-300" },
   { name: "Diamond", zh: "钻石", min: 1600, grad: "from-fuchsia-300 to-violet-500", text: "text-fuchsia-300" },
+  { name: "Challenger", zh: "王者", min: 1800, grad: "from-rose-400 via-fuchsia-400 to-indigo-400", text: "text-rose-300" },
 ];
 function rankForMmr(mmr) {
   let r = BATTLE_RANKS[0];
   for (const t of BATTLE_RANKS) if (mmr >= t.min) r = t;
   return r;
 }
-function wordTierForRankName(name) {
-  return { Bronze: "A1", Silver: "B1", Gold: "B2", Platinum: "C1", Diamond: "C2" }[name] || "A1";
-}
+// Grouped per the spec: Bronze/Silver slow+inaccurate, Gold/Platinum
+// moderate, Diamond/Challenger fast+sharp. acc is sampled per round from
+// [min,max] (not a fixed value) so a bot's hit rate has natural variance
+// instead of feeling like a fixed dice roll every round.
 const BOT_PROFILE = {
-  Bronze: { acc: 0.55, minMs: 2200, maxMs: 4800 },
-  Silver: { acc: 0.65, minMs: 1800, maxMs: 4200 },
-  Gold: { acc: 0.75, minMs: 1500, maxMs: 3600 },
-  Platinum: { acc: 0.85, minMs: 1200, maxMs: 3000 },
-  Diamond: { acc: 0.93, minMs: 900, maxMs: 2400 },
+  Bronze: { accMin: 0.60, accMax: 0.75, minMs: 2500, maxMs: 4000 },
+  Silver: { accMin: 0.65, accMax: 0.78, minMs: 2300, maxMs: 3800 },
+  Gold: { accMin: 0.80, accMax: 0.88, minMs: 2000, maxMs: 3000 },
+  Platinum: { accMin: 0.83, accMax: 0.90, minMs: 1800, maxMs: 2800 },
+  Diamond: { accMin: 0.92, accMax: 0.97, minMs: 1300, maxMs: 2000 },
+  Challenger: { accMin: 0.94, accMax: 0.98, minMs: 1000, maxMs: 1800 },
+};
+
+// Original word bank, calibrated per battle rank rather than the vocab-size
+// test's CEFR bands — Bronze is genuinely everyday/beginner vocabulary, not
+// "A1" by a stricter academic definition.
+const BATTLE_WORD_TIERS = {
+  Bronze: [
+    { w: "apple", zh: "苹果" }, { w: "journey", zh: "旅程" }, { w: "silent", zh: "安静的" }, { w: "protect", zh: "保护" },
+    { w: "kitchen", zh: "厨房" }, { w: "brave", zh: "勇敢的" }, { w: "gentle", zh: "温和的" }, { w: "forest", zh: "森林" },
+    { w: "quickly", zh: "快地" }, { w: "danger", zh: "危险" }, { w: "freedom", zh: "自由" }, { w: "seldom", zh: "很少" },
+    { w: "honest", zh: "诚实的" }, { w: "wooden", zh: "木制的" }, { w: "narrow", zh: "狭窄的" }, { w: "shallow", zh: "浅的" },
+    { w: "borrow", zh: "借" }, { w: "stranger", zh: "陌生人" }, { w: "whisper", zh: "低语" }, { w: "comfort", zh: "安慰" },
+  ],
+  Silver: [
+    { w: "achieve", zh: "达成" }, { w: "candidate", zh: "候选人" }, { w: "benefit", zh: "益处" }, { w: "persuade", zh: "说服" },
+    { w: "evaluate", zh: "评估" }, { w: "appropriate", zh: "恰当的" }, { w: "contribute", zh: "贡献" }, { w: "consequence", zh: "后果" },
+    { w: "previous", zh: "先前的" }, { w: "significant", zh: "重要的" }, { w: "occupy", zh: "占据" }, { w: "tendency", zh: "倾向" },
+    { w: "reluctant", zh: "不情愿的" }, { w: "sufficient", zh: "足够的" }, { w: "accomplish", zh: "完成" }, { w: "distribute", zh: "分发" },
+    { w: "emphasize", zh: "强调" }, { w: "guarantee", zh: "保证" }, { w: "negotiate", zh: "谈判" }, { w: "priority", zh: "优先事项" },
+  ],
+  Gold: [
+    { w: "coincidence", zh: "巧合" }, { w: "substantial", zh: "大量的" }, { w: "persistent", zh: "持续的" }, { w: "discrepancy", zh: "差异" },
+    { w: "feasible", zh: "可行的" }, { w: "plausible", zh: "似乎合理的" }, { w: "meticulous", zh: "一丝不苟的" }, { w: "comprehensive", zh: "全面的" },
+    { w: "controversy", zh: "争议" }, { w: "deteriorate", zh: "恶化" }, { w: "hypothesis", zh: "假设" }, { w: "inevitable", zh: "不可避免的" },
+    { w: "legitimate", zh: "合法的" }, { w: "notion", zh: "观念" }, { w: "presumably", zh: "大概" }, { w: "undermine", zh: "削弱" },
+    { w: "versatile", zh: "多才多艺的" }, { w: "restrain", zh: "抑制" }, { w: "subsequent", zh: "随后的" }, { w: "viable", zh: "可行的" },
+  ],
+  Platinum: [
+    { w: "ambiguity", zh: "模糊性" }, { w: "austere", zh: "朴素的" }, { w: "cognizant", zh: "知晓的" }, { w: "deference", zh: "尊重" },
+    { w: "empirical", zh: "经验主义的" }, { w: "extrapolate", zh: "推断" }, { w: "impetuous", zh: "冲动的" }, { w: "incongruous", zh: "不协调的" },
+    { w: "indolent", zh: "懒惰的" }, { w: "magnanimous", zh: "宽宏大量的" }, { w: "obsolete", zh: "过时的" }, { w: "paradox", zh: "悖论" },
+    { w: "redundant", zh: "多余的" }, { w: "scrupulous", zh: "一丝不苟的" }, { w: "stringent", zh: "严格的" }, { w: "tangential", zh: "离题的" },
+    { w: "vindicate", zh: "证明无罪" }, { w: "wary", zh: "谨慎的" }, { w: "zealous", zh: "热心的" }, { w: "ostensible", zh: "表面上的" },
+  ],
+  Diamond: [
+    { w: "ephemeral", zh: "短暂的" }, { w: "ubiquitous", zh: "无处不在的" }, { w: "pragmatic", zh: "务实的" }, { w: "scrutinize", zh: "仔细检查" },
+    { w: "cacophony", zh: "刺耳的声音" }, { w: "dichotomy", zh: "二分法" }, { w: "equivocate", zh: "含糊其辞" }, { w: "esoteric", zh: "深奥的" },
+    { w: "fastidious", zh: "挑剔的" }, { w: "iconoclast", zh: "反传统者" }, { w: "insidious", zh: "阴险的" }, { w: "mercurial", zh: "反复无常的" },
+    { w: "obfuscate", zh: "使模糊" }, { w: "parsimonious", zh: "吝啬的" }, { w: "perfunctory", zh: "敷衍的" }, { w: "quintessential", zh: "典型的" },
+    { w: "sanguine", zh: "乐观的" }, { w: "taciturn", zh: "沉默寡言的" }, { w: "vicarious", zh: "替代性的" }, { w: "conundrum", zh: "难题" },
+  ],
+  Challenger: [
+    { w: "recalcitrant", zh: "顽固的" }, { w: "perfidious", zh: "背信弃义的" }, { w: "obstreperous", zh: "喧闹反抗的" }, { w: "pusillanimous", zh: "懦弱的" },
+    { w: "sesquipedalian", zh: "爱用长词的" }, { w: "antediluvian", zh: "极过时的" }, { w: "perspicacious", zh: "有洞察力的" }, { w: "mellifluous", zh: "悦耳的" },
+    { w: "ineffable", zh: "难以言表的" }, { w: "quixotic", zh: "不切实际的" }, { w: "ersatz", zh: "假的" }, { w: "obdurate", zh: "固执的" },
+    { w: "effulgent", zh: "光辉的" }, { w: "sedulous", zh: "勤勉的" }, { w: "incorrigible", zh: "屡教不改的" }, { w: "verisimilitude", zh: "逼真性" },
+    { w: "sycophant", zh: "谄媚者" }, { w: "vituperative", zh: "谩骂的" }, { w: "truculent", zh: "好斗的" }, { w: "obstinate", zh: "固执的" },
+  ],
 };
 
 // Deterministic PRNG (mulberry32-ish) seeded from a string, so two clients
-// given the same seed derive the exact same round order/distractors without
-// any word content passing through the server.
+// given the same seed derive the exact same round order/distractors/round
+// count without any word content passing through the server.
 function seededRng(seedStr) {
   let h = 1779033703 ^ seedStr.length;
   for (let i = 0; i < seedStr.length; i++) {
@@ -364,14 +424,18 @@ function shuffleSeeded(arr, rng) {
   }
   return a;
 }
-function battleRoundsFor(seed, tierId, count) {
-  const tier = VOCAB_TEST_TIERS.find((t) => t.id === tierId) || VOCAB_TEST_TIERS[0];
-  const rng = seededRng(`${seed}:${tierId}`);
-  const picked = shuffleSeeded(tier.words, rng).slice(0, Math.min(count, tier.words.length));
+// Rounds are 5-7, picked deterministically from the seed so both clients
+// agree without a round trip. Choices are the Chinese translation (Baicizhan
+// style) rather than the English gloss.
+function battleRoundsFor(seed, rankName) {
+  const bank = BATTLE_WORD_TIERS[rankName] || BATTLE_WORD_TIERS.Bronze;
+  const rng = seededRng(`${seed}:${rankName}`);
+  const count = 5 + Math.floor(rng() * 3);
+  const picked = shuffleSeeded(bank, rng).slice(0, Math.min(count, bank.length));
   return picked.map((word) => {
-    const distractors = shuffleSeeded(tier.words.filter((w) => w.w !== word.w), rng).slice(0, 3);
-    const choices = shuffleSeeded([word, ...distractors], rng).map((w) => w.en);
-    return { word: word.w, zh: word.zh, correct: word.en, choices };
+    const distractors = shuffleSeeded(bank.filter((w) => w.w !== word.w), rng).slice(0, 3);
+    const choices = shuffleSeeded([word, ...distractors], rng).map((w) => w.zh);
+    return { word: word.w, correct: word.zh, choices };
   });
 }
 
@@ -462,6 +526,19 @@ const save = (k, v) => localStorage.setItem(k, JSON.stringify(v));
 // session into "tomorrow" for anyone west of UTC, making cards due too soon.
 const todayStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const addDays = (base, n) => new Date(Date.parse(base) + n * 86400000).toISOString().slice(0, 10);
+// Streak object shape guard — a corrupt/legacy localStorage value (or a
+// future field we add later) shouldn't hard-crash the streak UI; fall back
+// to a fresh streak instead of propagating garbage into render.
+function sanitizeStreak(s) {
+  const fresh = { count: 0, last: null, freezeCount: 1, freezeWeekStamp: null };
+  if (!s || typeof s !== "object") return fresh;
+  return {
+    count: Number.isFinite(s.count) && s.count >= 0 ? s.count : 0,
+    last: typeof s.last === "string" ? s.last : null,
+    freezeCount: Number.isFinite(s.freezeCount) && s.freezeCount >= 0 ? s.freezeCount : 1,
+    freezeWeekStamp: Number.isFinite(s.freezeWeekStamp) ? s.freezeWeekStamp : null,
+  };
+}
 let __idCounter = 0;
 const genId = () => (window.crypto && crypto.randomUUID)
   ? crypto.randomUUID()
@@ -988,7 +1065,7 @@ function App({ onLogout }) {
   ])));
   const [activeListId, setActiveListId] = useState(() => load(nsKey("activeList"), "default"));
   const [stats, setStats] = useState(() => load(nsKey("stats"), { sessions: 0, dailyLearned: {} }));
-  const [streak, setStreak] = useState(() => load(nsKey("streak"), { count: 0, last: null }));
+  const [streak, setStreak] = useState(() => sanitizeStreak(load(nsKey("streak"), null)));
   const [detailWord, setDetailWord] = useState(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [showKeyModal, setShowKeyModal] = useState(false);
@@ -1001,13 +1078,13 @@ function App({ onLogout }) {
   const [vocabTestResult, setVocabTestResult] = useState(() => load(nsKey("vocabTestResult"), 0));
 
   const isAdmin = CURRENT_EMAIL === ADMIN_EMAIL;
-  const [sessionInfo, setSessionInfo] = useState({ bonusPoints: 0, lastUsernameChange: null, vocabSizeOverride: null, streakOverride: null, wordsLearnedOverride: null, wordsMasteredOverride: null, leaderboardId: null });
+  const [sessionInfo, setSessionInfo] = useState({ bonusPoints: 0, lastUsernameChange: null, vocabSizeOverride: null, streakOverride: null, wordsLearnedOverride: null, wordsMasteredOverride: null, leaderboardId: null, battleMMR: 1000, battleWinStreak: 0 });
   const refreshSessionInfo = () => {
     const token = load(LS.sessionToken, null);
     if (!token) return;
     fetch(`${AUTH_BASE}/auth/session`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d) setSessionInfo({ bonusPoints: d.bonusPoints || 0, lastUsernameChange: d.lastUsernameChange || null, vocabSizeOverride: d.vocabSizeOverride ?? null, streakOverride: d.streakOverride ?? null, wordsLearnedOverride: d.wordsLearnedOverride ?? null, wordsMasteredOverride: d.wordsMasteredOverride ?? null, leaderboardId: d.leaderboardId || null }); })
+      .then((d) => { if (d) setSessionInfo({ bonusPoints: d.bonusPoints || 0, lastUsernameChange: d.lastUsernameChange || null, vocabSizeOverride: d.vocabSizeOverride ?? null, streakOverride: d.streakOverride ?? null, wordsLearnedOverride: d.wordsLearnedOverride ?? null, wordsMasteredOverride: d.wordsMasteredOverride ?? null, leaderboardId: d.leaderboardId || null, battleMMR: d.battleMMR || 1000, battleWinStreak: d.battleWinStreak || 0 }); })
       .catch(() => {});
   };
   useEffect(() => { refreshSessionInfo(); }, []);
@@ -1027,6 +1104,13 @@ function App({ onLogout }) {
   useEffect(() => save(nsKey("activeList"), activeListId), [activeListId]);
   useEffect(() => save(nsKey("stats"), stats), [stats]);
   useEffect(() => save(nsKey("streak"), streak), [streak]);
+  // Regenerates one streak-freeze (grace day) per calendar week, capped at 1
+  // banked at a time — so missing a single day doesn't wipe a long streak,
+  // but freezes can't be stockpiled indefinitely.
+  useEffect(() => {
+    const weekNum = Math.floor(Date.now() / (7 * 86400000));
+    setStreak((s) => (s.freezeWeekStamp === weekNum ? s : { ...s, freezeCount: Math.min(1, (s.freezeCount || 0) + 1), freezeWeekStamp: weekNum }));
+  }, []);
   useEffect(() => save(nsKey("vocabTestResult"), vocabTestResult), [vocabTestResult]);
 
   useEffect(() => {
@@ -1177,10 +1261,15 @@ function App({ onLogout }) {
   const registerActivity = () => {
     const t = todayStr();
     setStreak((s) => {
-      if (s.last === t) return s;
+      if (s.last === t) return s; // already logged today — never double-count within the same day
       const yest = todayStr(new Date(Date.now() - 86400000));
-      const count = s.last === yest ? s.count + 1 : 1;
-      return { count, last: t };
+      if (s.last === yest) return { ...s, count: s.count + 1, last: t };
+      // Missed at least one day — spend a banked freeze to keep the streak
+      // alive instead of resetting it, if one's available.
+      if (s.last && s.count > 0 && (s.freezeCount || 0) > 0) {
+        return { ...s, count: s.count + 1, last: t, freezeCount: s.freezeCount - 1 };
+      }
+      return { ...s, count: 1, last: t };
     });
   };
 
@@ -1277,7 +1366,7 @@ function App({ onLogout }) {
         ) : (
           <div key={view} className="animate-fade-up">
             {view === "dashboard" && (
-              <Dashboard {...{ apiKey, provider, masteredCount: totalMastered, totalIntroduced, todayLearned, stats, streak, activeList, learnPending, setView, points }} />
+              <Dashboard {...{ apiKey, provider, masteredCount: totalMastered, totalIntroduced, todayLearned, stats, streak, activeList, learnPending, setView, points, battleMMR: sessionInfo.battleMMR, battleWinStreak: sessionInfo.battleWinStreak, uiLang }} />
             )}
             {view === "lists" && (
               <WordLists {...{ lists, setLists, activeListId, setActiveListId, apiKey, model, provider }} />
@@ -1446,9 +1535,11 @@ function DayDetail({ dateStr, dailyLearned, activeList }) {
 }
 
 /* ---------------- Dashboard ---------------- */
-function Dashboard({ apiKey, provider, masteredCount, totalIntroduced, todayLearned, stats, streak, activeList, learnPending, setView, points }) {
+function Dashboard({ apiKey, provider, masteredCount, totalIntroduced, todayLearned, stats, streak, activeList, learnPending, setView, points, battleMMR, battleWinStreak, uiLang }) {
   const goal = activeList?.plan?.newPerDay || 5;
   const pct = Math.min(100, Math.round((todayLearned / goal) * 100));
+  const isZh = uiLang === "zh";
+  const myRank = rankForMmr(battleMMR ?? 1000);
 
   const cards = [
     { label: "Learned today", value: `${todayLearned}/${goal}`, icon: Target, tint: "text-sky-600 dark:text-sky-300", chip: "bg-sky-500/15", glow: "from-sky-500/10" },
@@ -1481,6 +1572,17 @@ function Dashboard({ apiKey, provider, masteredCount, totalIntroduced, todayLear
             <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-300 ring-1 ring-amber-500/25">
               <Sparkles size={12} /> {points.toLocaleString()} pts
             </span>
+            {streak.freezeCount > 0 && (
+              <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-sky-500/15 text-sky-600 dark:text-sky-300 ring-1 ring-sky-500/25"
+                title={isZh ? "错过一天也不会中断连续记录" : "Protects your streak if you miss a day"}>
+                🧊 {streak.freezeCount} {isZh ? "保护" : "freeze"}
+              </span>
+            )}
+            {battleWinStreak >= BATTLE_WIN_STREAK_DISPLAY_AT && (
+              <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-orange-500/15 text-orange-600 dark:text-orange-300 ring-1 ring-orange-500/25">
+                🔥 {battleWinStreak} {isZh ? "对战连胜" : "battle streak"}
+              </span>
+            )}
           </div>
           <p className="text-sm text-[color:var(--text-dim)] mt-1">
             {todayLearned >= goal ? "Today's goal is done — great work!" : `${goal - todayLearned} more word${goal - todayLearned === 1 ? "" : "s"} to hit today's goal.`}
@@ -1502,6 +1604,20 @@ function Dashboard({ apiKey, provider, masteredCount, totalIntroduced, todayLear
           </div>
         </div>
       )}
+
+      <button onClick={() => setView("battle")}
+        className={`w-full mb-8 relative overflow-hidden rounded-2xl bg-gradient-to-br ${myRank.grad} bg-opacity-10 ring-1 ring-[color:var(--border)] p-5 flex items-center gap-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:shadow-black/10`}>
+        <div className="h-12 w-12 rounded-xl bg-[color:var(--surface)]/60 ring-1 ring-white/10 flex items-center justify-center shrink-0">
+          <Swords size={22} className={myRank.text} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-[color:var(--text)]">{isZh ? "词汇对战" : "Vocabulary Battle"}</p>
+          <p className="text-xs text-[color:var(--text-dim)] mt-0.5">
+            {isZh ? `${myRank.zh} · ${battleMMR ?? 1000} MMR — 挑战真人或 AI 对手` : `${myRank.name} · ${battleMMR ?? 1000} MMR — challenge a real opponent or a bot`}
+          </p>
+        </div>
+        <ChevronRight size={18} className="text-[color:var(--text-faint)] shrink-0" />
+      </button>
 
       <div className="grid grid-cols-2 gap-4 mb-8 stagger">
         {cards.map((c) => (
@@ -2107,15 +2223,22 @@ function SettingsView({ apiKey, setApiKey, model, setModel, provider, setProvide
 }
 
 /* ---------------- Leaderboard ---------------- */
-function BattleHpBar({ label, hp, tint }) {
+function BattleScoreBar({ label, score, pct, tint, combo }) {
   return (
     <div className="flex-1 min-w-0">
-      <div className="flex justify-between text-xs mb-1">
+      <div className="flex justify-between items-center text-xs mb-1 gap-1">
         <span className="font-medium text-[color:var(--text)] truncate">{label}</span>
-        <span className="text-[color:var(--text-faint)] tabular-nums">{Math.round(hp)}</span>
+        <span className="flex items-center gap-1.5 shrink-0">
+          {combo >= BATTLE_COMBO_BONUS_AT && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400">
+              {combo >= 3 ? "×3" : "×2"}
+            </span>
+          )}
+          <span className="text-[color:var(--text-faint)] tabular-nums">{score}</span>
+        </span>
       </div>
       <div className="h-2.5 rounded-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] overflow-hidden">
-        <div className={`h-full rounded-full bg-gradient-to-r ${tint} transition-all duration-500 ease-out`} style={{ width: `${Math.max(0, Math.min(100, hp))}%` }} />
+        <div className={`h-full rounded-full bg-gradient-to-r ${tint} transition-all duration-500 ease-out`} style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
       </div>
     </div>
   );
@@ -2125,10 +2248,10 @@ function BattleView({ uiLang }) {
   const isZh = uiLang === "zh";
   const token = load(LS.sessionToken, null);
 
-  const [mmrInfo, setMmrInfo] = useState({ battleMMR: 1000, battleWins: 0, battleLosses: 0 });
+  const [mmrInfo, setMmrInfo] = useState({ battleMMR: 1000, battleWins: 0, battleLosses: 0, battleWinStreak: 0 });
   const refreshMmr = () => {
     authRequest("/auth/session", "GET", null, token)
-      .then((d) => setMmrInfo({ battleMMR: d.battleMMR || 1000, battleWins: d.battleWins || 0, battleLosses: d.battleLosses || 0 }))
+      .then((d) => setMmrInfo({ battleMMR: d.battleMMR || 1000, battleWins: d.battleWins || 0, battleLosses: d.battleLosses || 0, battleWinStreak: d.battleWinStreak || 0 }))
       .catch(() => {});
   };
   useEffect(() => { refreshMmr(); }, []);
@@ -2140,8 +2263,8 @@ function BattleView({ uiLang }) {
   const [roundIdx, setRoundIdx] = useState(0);
   const [roundPhase, setRoundPhase] = useState("answering"); // answering | waiting | reveal
   const [selected, setSelected] = useState(null);
-  const [hp, setHp] = useState({ you: 100, opp: 100 });
-  const [dmgTotal, setDmgTotal] = useState({ you: 0, opp: 0 });
+  const [score, setScore] = useState({ you: 0, opp: 0 });
+  const [combo, setCombo] = useState({ you: 0, opp: 0 });
   const [reveal, setReveal] = useState(null);
   const [finalResult, setFinalResult] = useState(null);
 
@@ -2175,32 +2298,46 @@ function BattleView({ uiLang }) {
     return { correct: false, ms: BATTLE_ROUND_MS };
   }
 
-  function dmgFor(a) {
+  // Baicizhan-style scoring: +100 for correct, up to +50 more for answering
+  // inside the speed-bonus window, then a combo multiplier (2x/3x) on top
+  // for consecutive fast-correct answers. Wrong answers score 0 and (for the
+  // local player only) add a short input-freeze before the next round.
+  function pointsFor(a) {
     if (!a.correct) return 0;
-    const speed = Math.max(0, Math.min(1, (BATTLE_ROUND_MS - a.ms) / BATTLE_ROUND_MS));
-    return Math.round(8 + speed * 12);
+    const bonus = a.ms <= BATTLE_SPEED_BONUS_WINDOW_MS ? Math.round(50 * (1 - a.ms / BATTLE_SPEED_BONUS_WINDOW_MS)) : 0;
+    return 100 + bonus;
+  }
+  function nextCombo(prevCombo, a) {
+    return (a.correct && a.ms <= BATTLE_SPEED_BONUS_WINDOW_MS) ? prevCombo + 1 : 0;
+  }
+  function comboMult(c) {
+    if (c >= 3) return 3;
+    if (c >= BATTLE_COMBO_BONUS_AT) return 2;
+    return 1;
   }
 
-  async function finishBattle(opp, finalHp, finalDmg) {
-    const win = finalHp.you > finalHp.opp || (finalHp.you === finalHp.opp && finalDmg.you > finalDmg.opp);
-    const draw = finalHp.you === finalHp.opp && finalDmg.you === finalDmg.opp;
-    let mmrDelta = 0;
+  async function finishBattle(opp, finalScore) {
+    const win = finalScore.you > finalScore.opp;
+    const draw = finalScore.you === finalScore.opp;
+    let mmrDelta = 0, winStreak = mmrInfo.battleWinStreak;
     try {
       if (opp.isBot) {
         const r = await authRequest("/battle/bot-result", "POST", { win, draw }, token);
         mmrDelta = r.mmrDelta || 0;
+        winStreak = r.battleWinStreak ?? winStreak;
       } else {
-        const r = await authRequest("/battle/finish", "POST", { battleId: battleIdRef.current, myScore: finalHp.you, oppScore: finalHp.opp }, token);
+        const r = await authRequest("/battle/finish", "POST", { battleId: battleIdRef.current, myScore: finalScore.you, oppScore: finalScore.opp }, token);
         mmrDelta = r.mmrDelta || 0;
+        winStreak = r.battleWinStreak ?? winStreak;
       }
     } catch { /* leaderboard-style best-effort — battle result still shows locally */ }
     if (cancelledRef.current) return;
     refreshMmr();
-    setFinalResult({ win: draw ? null : win, finalHp, mmrDelta });
+    setFinalResult({ win: draw ? null : win, finalScore, mmrDelta, winStreak });
     setPhase("result");
   }
 
-  async function runRound(idx, roundsArr, opp, hpNow, dmgNow) {
+  async function runRound(idx, roundsArr, opp, scoreNow, comboNow) {
     if (cancelledRef.current) return;
     setRoundIdx(idx);
     setSelected(null);
@@ -2223,7 +2360,8 @@ function BattleView({ uiLang }) {
       ? new Promise((resolve) => {
           const profile = BOT_PROFILE[opp.rankName] || BOT_PROFILE.Bronze;
           const delay = profile.minMs + Math.random() * (profile.maxMs - profile.minMs);
-          setTimeout(() => resolve({ correct: Math.random() < profile.acc, ms: Math.round(delay) }), delay);
+          const acc = profile.accMin + Math.random() * (profile.accMax - profile.accMin);
+          setTimeout(() => resolve({ correct: Math.random() < acc, ms: Math.round(delay) }), delay);
         })
       : pollOpponentAnswer(idx);
 
@@ -2237,32 +2375,34 @@ function BattleView({ uiLang }) {
     const oppAnswer = await oppPromise;
     if (cancelledRef.current) return;
 
-    const youDmg = dmgFor(mine);
-    const oppDmg = dmgFor(oppAnswer);
-    const newHp = { you: Math.max(0, hpNow.you - oppDmg), opp: Math.max(0, hpNow.opp - youDmg) };
-    const newDmg = { you: dmgNow.you + youDmg, opp: dmgNow.opp + oppDmg };
-    setHp(newHp);
-    setDmgTotal(newDmg);
-    setReveal({ mineCorrect: mine.correct, oppCorrect: oppAnswer.correct, youDmg, oppDmg });
+    const newComboYou = nextCombo(comboNow.you, mine);
+    const newComboOpp = nextCombo(comboNow.opp, oppAnswer);
+    const youPts = pointsFor(mine) * comboMult(newComboYou);
+    const oppPts = pointsFor(oppAnswer) * comboMult(newComboOpp);
+    const newScore = { you: scoreNow.you + youPts, opp: scoreNow.opp + oppPts };
+    const newCombo = { you: newComboYou, opp: newComboOpp };
+    setScore(newScore);
+    setCombo(newCombo);
+    setReveal({ mineCorrect: mine.correct, oppCorrect: oppAnswer.correct, youPts, oppPts });
     setRoundPhase("reveal");
 
-    await sleep(1600);
+    await sleep(1200 + (mine.correct ? 0 : BATTLE_WRONG_FREEZE_MS));
     if (cancelledRef.current) return;
 
-    const done = newHp.you <= 0 || newHp.opp <= 0 || idx + 1 >= roundsArr.length;
-    if (done) finishBattle(opp, newHp, newDmg);
-    else runRound(idx + 1, roundsArr, opp, newHp, newDmg);
+    const done = idx + 1 >= roundsArr.length;
+    if (done) finishBattle(opp, newScore);
+    else runRound(idx + 1, roundsArr, opp, newScore, newCombo);
   }
 
   function beginBattle(opp) {
-    const roundsArr = battleRoundsFor(opp.seed, opp.tierId, BATTLE_ROUNDS);
+    const roundsArr = battleRoundsFor(opp.seed, opp.wordRank);
     setOpponent(opp);
     setRounds(roundsArr);
-    setHp({ you: 100, opp: 100 });
-    setDmgTotal({ you: 0, opp: 0 });
+    setScore({ you: 0, opp: 0 });
+    setCombo({ you: 0, opp: 0 });
     setFinalResult(null);
     setPhase("battle");
-    runRound(0, roundsArr, opp, { you: 100, opp: 100 }, { you: 0, opp: 0 });
+    runRound(0, roundsArr, opp, { you: 0, opp: 0 }, { you: 0, opp: 0 });
   }
 
   async function startMatch() {
@@ -2293,7 +2433,7 @@ function BattleView({ uiLang }) {
         const state = await authRequest(`/battle/state?battleId=${matchedId}`, "GET", null, token);
         beginBattle({
           isBot: false, username: state.opponentUsername,
-          rankName: rankForMmr(state.mmrs.opp).name, tierId: state.tier, seed: matchedId,
+          rankName: rankForMmr(state.mmrs.opp).name, wordRank: state.tier, seed: matchedId,
         });
         return;
       } catch { /* couldn't load the matched room — fall back to a bot below */ }
@@ -2303,7 +2443,7 @@ function BattleView({ uiLang }) {
     const myRank = rankForMmr(mmrInfo.battleMMR);
     beginBattle({
       isBot: true, username: isZh ? `AI · ${myRank.zh}` : `Bot · ${myRank.name}`,
-      rankName: myRank.name, tierId: wordTierForRankName(myRank.name), seed: `bot-${Date.now()}-${Math.random()}`,
+      rankName: myRank.name, wordRank: myRank.name, seed: `bot-${Date.now()}-${Math.random()}`,
     });
   }
 
@@ -2343,8 +2483,11 @@ function BattleView({ uiLang }) {
               <p className={`text-lg font-semibold ${myRank.text}`}>{isZh ? myRank.zh : myRank.name}</p>
               <p className="text-xs text-[color:var(--text-faint)]">{mmrInfo.battleMMR} MMR</p>
             </div>
-            <div className="text-right text-xs text-[color:var(--text-dim)]">
+            <div className="text-right text-xs text-[color:var(--text-dim)] space-y-0.5">
               <p>{mmrInfo.battleWins}{isZh ? " 胜" : "W"} · {mmrInfo.battleLosses}{isZh ? " 负" : "L"}</p>
+              {mmrInfo.battleWinStreak >= BATTLE_WIN_STREAK_DISPLAY_AT && (
+                <p className="text-orange-400 font-medium">🔥 {mmrInfo.battleWinStreak} {isZh ? "连胜" : "streak"}</p>
+              )}
             </div>
           </div>
           <div className="flex gap-1.5">
@@ -2356,8 +2499,8 @@ function BattleView({ uiLang }) {
 
         <div className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-6 text-center">
           <p className="text-sm text-[color:var(--text-dim)] mb-4">
-            {isZh ? `${BATTLE_ROUNDS} 回合，答对越快伤害越高。找不到对手 5 秒内自动匹配 AI。`
-              : `${BATTLE_ROUNDS} rounds — answer fast and correct to deal more damage. No opponent in 5s falls back to a bot.`}
+            {isZh ? "5-7 回合，看英文选中文释义，越快答对分越高，连续快答触发连击加成。"
+              : "5-7 rounds — pick the Chinese meaning for each English word. Fast, correct answers score more and chain into combo multipliers."}
           </p>
           <button onClick={startMatch}
             className="btn-pulse press-scale px-6 py-3 rounded-xl bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 transition inline-flex items-center gap-2">
@@ -2369,12 +2512,10 @@ function BattleView({ uiLang }) {
   }
 
   if (phase === "searching") {
-    const remaining = Math.max(0, Math.ceil((BATTLE_QUEUE_TIMEOUT_MS - searchElapsed) / 1000));
     return (
       <div className="max-w-md mx-auto px-4 py-16 text-center">
         <Loader2 size={28} className="animate-spin text-[color:var(--accent-text)] mx-auto mb-4" />
-        <p className="text-sm font-medium text-[color:var(--text)] mb-1">{isZh ? "正在寻找对手…" : "Searching for an opponent…"}</p>
-        <p className="text-xs text-[color:var(--text-faint)] mb-6">{isZh ? `${remaining} 秒后匹配 AI` : `Falls back to a bot in ${remaining}s`}</p>
+        <p className="text-sm font-medium text-[color:var(--text)] mb-6">{isZh ? "正在寻找对手…" : "Searching for an opponent…"}</p>
         <button onClick={cancelSearch} className="press-scale px-4 py-2 rounded-lg ring-1 ring-[color:var(--border)] text-sm text-[color:var(--text-dim)] hover:text-[color:var(--text)]">
           {isZh ? "取消" : "Cancel"}
         </button>
@@ -2385,17 +2526,17 @@ function BattleView({ uiLang }) {
   if (phase === "battle") {
     const roundData = rounds[roundIdx];
     if (!roundData) return null;
+    const maxScore = Math.max(score.you, score.opp, 1);
     return (
       <div className="max-w-2xl mx-auto px-4 sm:px-8 py-6 sm:py-10">
         <div className="flex items-center gap-4 mb-6">
-          <BattleHpBar label={isZh ? "你" : "You"} hp={hp.you} tint="from-emerald-400 to-emerald-500" />
+          <BattleScoreBar label={isZh ? "你" : "You"} score={score.you} pct={(score.you / maxScore) * 100} combo={combo.you} tint="from-emerald-400 to-emerald-500" />
           <span className="text-xs text-[color:var(--text-faint)] shrink-0">{isZh ? "回合" : "Round"} {roundIdx + 1}/{rounds.length}</span>
-          <BattleHpBar label={opponent.username} hp={hp.opp} tint="from-rose-400 to-rose-500" />
+          <BattleScoreBar label={opponent.username} score={score.opp} pct={(score.opp / maxScore) * 100} combo={combo.opp} tint="from-rose-400 to-rose-500" />
         </div>
 
         <div className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-6 sm:p-8 text-center mb-5">
-          <p className="text-3xl font-semibold text-[color:var(--text)] mb-1">{roundData.word}</p>
-          <p className="text-sm text-[color:var(--text-faint)]">{roundData.zh}</p>
+          <p className="text-3xl font-semibold text-[color:var(--text)]">{roundData.word}</p>
         </div>
 
         <div className="grid grid-cols-1 gap-2.5">
@@ -2425,10 +2566,10 @@ function BattleView({ uiLang }) {
         {roundPhase === "reveal" && reveal && (
           <div className="flex items-center justify-center gap-6 mt-5 text-xs">
             <span className={reveal.mineCorrect ? "text-emerald-400" : "text-rose-400"}>
-              {isZh ? "你" : "You"}: {reveal.mineCorrect ? `-${reveal.youDmg} HP` : (isZh ? "未命中" : "miss")}
+              {isZh ? "你" : "You"}: {reveal.mineCorrect ? `+${reveal.youPts}` : (isZh ? "未命中" : "miss")}
             </span>
             <span className={reveal.oppCorrect ? "text-emerald-400" : "text-rose-400"}>
-              {opponent.username}: {reveal.oppCorrect ? `-${reveal.oppDmg} HP` : (isZh ? "未命中" : "miss")}
+              {opponent.username}: {reveal.oppCorrect ? `+${reveal.oppPts}` : (isZh ? "未命中" : "miss")}
             </span>
           </div>
         )}
@@ -2437,15 +2578,18 @@ function BattleView({ uiLang }) {
   }
 
   if (phase === "result" && finalResult) {
-    const { win, finalHp, mmrDelta } = finalResult;
+    const { win, finalScore, mmrDelta, winStreak } = finalResult;
     const label = win === null ? (isZh ? "平局" : "Draw") : win ? (isZh ? "胜利" : "Victory") : (isZh ? "失败" : "Defeat");
     const tint = win === null ? "text-[color:var(--text)]" : win ? "text-emerald-400" : "text-rose-400";
     return (
       <div className="max-w-md mx-auto px-4 py-16 text-center">
         <p className={`text-3xl font-bold mb-2 ${tint}`}>{label}</p>
         <p className="text-sm text-[color:var(--text-dim)] mb-1">
-          {isZh ? "你" : "You"} {Math.round(finalHp.you)} HP — {opponent.username} {Math.round(finalHp.opp)} HP
+          {isZh ? "你" : "You"} {finalScore.you} — {opponent.username} {finalScore.opp}
         </p>
+        {winStreak >= BATTLE_WIN_STREAK_DISPLAY_AT && (
+          <p className="text-sm text-orange-400 font-medium mb-1">🔥 {winStreak} {isZh ? "连胜" : "win streak"}{winStreak >= BATTLE_WIN_STREAK_BONUS_AT ? (isZh ? "（+50% 排位加成）" : " (+50% MMR bonus)") : ""}</p>
+        )}
         <p className={`text-sm font-medium mb-8 ${mmrDelta > 0 ? "text-emerald-400" : mmrDelta < 0 ? "text-rose-400" : "text-[color:var(--text-faint)]"}`}>
           {mmrDelta > 0 ? `+${mmrDelta}` : mmrDelta} MMR → {mmrInfo.battleMMR} ({isZh ? rankForMmr(mmrInfo.battleMMR).zh : rankForMmr(mmrInfo.battleMMR).name})
         </p>
