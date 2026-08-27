@@ -558,6 +558,22 @@ function sanitizeStreak(s) {
     freezeWeekStamp: Number.isFinite(s.freezeWeekStamp) ? s.freezeWeekStamp : null,
   };
 }
+/* ---------------- Hash routing ----------------
+ * Every top-level section gets its own URL: #dashboard, #battle, etc. A
+ * shared battle link carries a room id in the hash's own query string:
+ * #battle?room=<id>. This is one-directional (view state -> hash) via a
+ * pushState effect in App(), plus a popstate/hashchange listener for back/
+ * forward and deep links — not a full router, but enough that every
+ * section is bookmarkable/shareable and the browser back button works. */
+const APP_SECTIONS = ["dashboard", "lists", "deck", "learn", "quiz", "search", "sandbox", "battle", "leaderboard", "settings", "admin"];
+function parseHash() {
+  const raw = location.hash.replace(/^#/, "");
+  const qIdx = raw.indexOf("?");
+  const section = qIdx === -1 ? raw : raw.slice(0, qIdx);
+  const params = new URLSearchParams(qIdx === -1 ? "" : raw.slice(qIdx + 1));
+  return { section, params };
+}
+
 let __idCounter = 0;
 const genId = () => (window.crypto && crypto.randomUUID)
   ? crypto.randomUUID()
@@ -583,7 +599,18 @@ function repairListIds(lists) {
 // pass has run for this word yet, and `[]` once it's run and genuinely found
 // nothing; callers should treat both as "no example to show" and render
 // accordingly rather than inventing one.
-const buildExamples = (word) => (word.examples && word.examples.length) ? word.examples : [];
+//
+// Always returns `{en, cn}[]` — normalizes older saved data, where
+// `word.examples` was a plain `string[]` (dictionaryapi.dev quotes, no
+// translation), into the same shape as the newer AI-written ones (which
+// carry a `cn` translation and follow three distinct sentence structures:
+// simple/declarative, complex/conditional, conversational-or-passive).
+// `cn` is null for anything that was never translated — callers should
+// just skip that line rather than showing an empty string.
+const buildExamples = (word) => {
+  if (!word.examples || !word.examples.length) return [];
+  return word.examples.map((ex) => (typeof ex === "string" ? { en: ex, cn: null } : ex));
+};
 
 // US/UK pronunciation. Browser voice availability varies a lot by OS — the
 // fallback chain always finds *some* English voice, but which accent you
@@ -1057,10 +1084,34 @@ function AuthGate({ onAuth }) {
 
 /* ---------------- App ---------------- */
 function App({ onLogout }) {
-  // A shared battle link looks like ?battle=<id> — land straight on Battle
-  // (instead of the default Dashboard) so the invite can auto-join.
-  const [pendingInvite, setPendingInvite] = useState(() => new URLSearchParams(location.search).get("battle"));
-  const [view, setView] = useState(() => (pendingInvite ? "battle" : "dashboard"));
+  // A shared battle link looks like #battle?room=<id> — land straight on
+  // Battle (instead of the default Dashboard) so the invite can auto-join.
+  const initialHash = parseHash();
+  const [pendingInvite, setPendingInvite] = useState(() => (initialHash.section === "battle" ? initialHash.params.get("room") : null));
+  const [view, setView] = useState(() => (APP_SECTIONS.includes(initialHash.section) ? initialHash.section : "dashboard"));
+
+  // One-directional sync: view state -> URL hash, so every section is a
+  // real, bookmarkable/shareable URL. Uses pushState (not location.hash=)
+  // so this doesn't also fire the popstate/hashchange listener below.
+  useEffect(() => {
+    if (parseHash().section !== view) history.pushState(null, "", `#${view}`);
+  }, [view]);
+  useEffect(() => {
+    const onNavEvent = () => {
+      const { section, params } = parseHash();
+      if (APP_SECTIONS.includes(section)) setView(section);
+      // A same-tab navigation to a battle link only fires hashchange (no
+      // reload), so pendingInvite — normally seeded once at mount — needs
+      // to pick this up live too, or the invite is silently never joined.
+      if (section === "battle" && params.get("room")) setPendingInvite(params.get("room"));
+    };
+    window.addEventListener("popstate", onNavEvent);
+    window.addEventListener("hashchange", onNavEvent);
+    return () => {
+      window.removeEventListener("popstate", onNavEvent);
+      window.removeEventListener("hashchange", onNavEvent);
+    };
+  }, []);
   const [provider, setProvider] = useState(() => load(nsKey("provider"), DEFAULT_PROVIDER));
   const [providerKeys, setProviderKeys] = useState(() => {
     const stored = load(nsKey("providerKeys"), null);
@@ -1313,7 +1364,7 @@ function App({ onLogout }) {
       style={{ fontFamily: "'Inter', ui-sans-serif, system-ui" }}>
 
       <div className="md:hidden fixed top-0 inset-x-0 z-30 h-14 flex items-center justify-between px-4 bg-[color:var(--surface2)] border-b border-[color:var(--border)]">
-        <button onClick={() => { location.href = location.pathname; }} className="flex items-center gap-2 press-scale">
+        <button onClick={() => { location.href = location.pathname + "#dashboard"; }} className="flex items-center gap-2 press-scale">
           <img src="assets/icon-192.png" alt="Vooca" className="h-7 w-7 rounded-lg shadow-sm" />
           <h1 className="text-sm font-semibold text-[color:var(--text)]">Vooca</h1>
         </button>
@@ -1329,7 +1380,7 @@ function App({ onLogout }) {
       <aside className={`w-64 md:w-60 shrink-0 border-r border-[color:var(--border)] bg-[color:var(--surface2)] flex flex-col fixed md:static inset-y-0 left-0 z-50 transition-transform duration-200 ${
         mobileNavOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}>
         <div className="px-5 py-6 border-b border-[color:var(--border)] flex items-center justify-between">
-          <button onClick={() => { location.href = location.pathname; }} className="flex items-center gap-2.5 press-scale text-left">
+          <button onClick={() => { location.href = location.pathname + "#dashboard"; }} className="flex items-center gap-2.5 press-scale text-left">
             <img src="assets/icon-192.png" alt="Vooca" className="h-9 w-9 rounded-xl shadow-sm" />
             <div>
               <h1 className="text-sm font-semibold tracking-tight text-[color:var(--text)] leading-tight">Vooca</h1>
@@ -1406,7 +1457,7 @@ function App({ onLogout }) {
               <Sandbox {...{ words: activeList.words.filter((w) => w.learnedOn === todayStr()), apiKey, model, provider, setStats, registerActivity, promptKey: () => setShowKeyModal(true) }} />
             )}
             {view === "battle" && (
-              <BattleView uiLang={uiLang} pendingInvite={pendingInvite} onConsumeInvite={() => { setPendingInvite(null); history.replaceState(null, "", location.pathname); }} />
+              <BattleView uiLang={uiLang} pendingInvite={pendingInvite} onConsumeInvite={() => { setPendingInvite(null); history.replaceState(null, "", "#battle"); }} />
             )}
             {view === "leaderboard" && (
               <LeaderboardView {...{ profile, setProfile, uiLang, setVocabTestResult, onCreateList: createPersonalizedList, leaderboardUserId, liveStats: { totalLearned: effectiveTotalLearned, totalMastered: effectiveTotalMastered, vocabSize: effectiveVocabSize, streak: effectiveStreak, points } }} />
@@ -2395,7 +2446,11 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite, guestToken, initia
         const ans = d.answers?.[idx]?.opp;
         if (ans) return ans;
       } catch { /* transient — keep polling until the deadline */ }
-      await sleep(900);
+      // Tight interval here specifically — this is the in-round poll that
+      // drives how fast a player finds out their opponent has answered, so
+      // it's worth the extra KV reads (cheap; writes are the scarce free-
+      // tier resource, and this loop only reads) for a snappier feel.
+      await sleep(400);
     }
     return { correct: false, ms: BATTLE_ROUND_MS };
   }
@@ -2596,7 +2651,7 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite, guestToken, initia
   }
 
   function inviteUrl(id) {
-    return `${location.origin}${location.pathname}?battle=${id}`;
+    return `${location.origin}${location.pathname}#battle?room=${id}`;
   }
 
   function copyInviteLink() {
@@ -3575,24 +3630,37 @@ async function fetchRealExamples(word) {
     const res = await fetch(`${LEADERBOARD_BASE}/dictionary-examples?word=${encodeURIComponent(word.trim().toLowerCase())}`);
     if (!res.ok) return [];
     const data = await res.json();
-    return Array.isArray(data.examples) ? data.examples : [];
+    // Real dictionary quotes, not written to any particular structure — no
+    // translation available without an API key, so cn stays null.
+    return Array.isArray(data.examples) ? data.examples.map((en) => ({ en, cn: null })) : [];
   } catch { return []; }
 }
 
 // AI fallback for words the free dictionary has no real example for — only
 // used when the user has their own API key set, and only for the handful of
-// words that still came back empty after fetchExamplesBatch.
+// words that still came back empty after fetchExamplesBatch. Asks for
+// exactly 3 sentences per word, each a different grammatical structure (so
+// a learner sees the word used three genuinely different ways, not three
+// near-identical templates), each with its own Chinese translation.
 async function fetchAiExamplesBatch(words, apiKey, model, provider) {
   if (!words.length) return {};
-  const system = `You write natural example sentences for a vocabulary app. Given a list of English words (each with its register/"vibe"), write 2 realistic sentences per word that actually demonstrate its meaning in use — not a fill-in-the-blank template, real varied sentences a native speaker might write. Return ONLY valid JSON (no markdown, no preamble): an array with one object per word, same order: [{"word": string, "examples": [string, string]}]`;
+  const system = `You write natural example sentences for a vocabulary app. Given a list of English words (each with its register/"vibe"), write exactly 3 example sentences per word, each demonstrating its meaning in genuine use (not a fill-in-the-blank template) and each following a DIFFERENT grammatical structure:
+1. Simple/declarative — a direct statement showing the core meaning.
+2. Complex/conditional — uses a clause (If/When/Although/etc.) for deeper context.
+3. Conversational or passive — natural spoken dialogue (quoted) or an academic passive-voice sentence.
+Give an accurate, natural Chinese translation for each sentence. Return ONLY valid JSON (no markdown, no preamble): an array with one object per word, same order: [{"word": string, "examples": [{"en": string, "cn": string}, {"en": string, "cn": string}, {"en": string, "cn": string}]}]`;
   const userText = words.map((w) => `${w.word} (${w.vibe || "formal"})`).join("\n");
   try {
-    const raw = await callAI({ provider, apiKey, model, system, userText, maxTokens: Math.min(4000, words.length * 150) });
+    const raw = await callAI({ provider, apiKey, model, system, userText, maxTokens: Math.min(6000, words.length * 260) });
     const parsed = extractJsonArray(raw);
     const out = {};
     if (Array.isArray(parsed)) {
       parsed.forEach((p) => {
-        if (p?.word && Array.isArray(p.examples) && p.examples.length) out[p.word.trim().toLowerCase()] = p.examples;
+        if (!p?.word || !Array.isArray(p.examples) || !p.examples.length) return;
+        const examples = p.examples
+          .map((e) => (typeof e === "string" ? { en: e, cn: null } : { en: e?.en, cn: e?.cn || null }))
+          .filter((e) => e.en);
+        if (examples.length) out[p.word.trim().toLowerCase()] = examples;
       });
     }
     return out;
@@ -4534,9 +4602,10 @@ function WordDetailPage({ listId, wordId, lists, onBack, uiLang }) {
           <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-dim)] mb-2">Example sentences</p>
           {examples.length > 0 ? (
             <div className="space-y-2">
-              {examples.map((s, i) => (
+              {examples.map((ex, i) => (
                 <div key={i} className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-4">
-                  <p className="text-sm text-[color:var(--text)] italic leading-relaxed">{s}</p>
+                  <p className="text-sm text-[color:var(--text)] italic leading-relaxed">{ex.en}</p>
+                  {ex.cn && <p className="text-xs text-[color:var(--text-faint)] mt-1 leading-relaxed">{ex.cn}</p>}
                 </div>
               ))}
             </div>
@@ -4593,7 +4662,7 @@ function LearnCard({ word, style, revealed, onReveal, uiLang }) {
       <div>
         <p className="text-xs uppercase tracking-wide text-[color:var(--text-faint)] mb-2">Guess it from context</p>
         {examples.length > 0 ? (
-          <p className="text-lg text-[color:var(--text)] mb-2 leading-relaxed">{examples[0].replace(new RegExp(word.word, "i"), "____")}</p>
+          <p className="text-lg text-[color:var(--text)] mb-2 leading-relaxed">{examples[0].en.replace(new RegExp(word.word, "i"), "____")}</p>
         ) : (
           <p className="text-sm text-[color:var(--text-faint)] mb-2 italic">No example sentence found for this word — guess from the hint instead.</p>
         )}
@@ -4628,7 +4697,7 @@ function LearnCard({ word, style, revealed, onReveal, uiLang }) {
       ) : (
         <div className="text-left mt-4 space-y-3">
           <p className="text-base text-[color:var(--text)] leading-relaxed">{displayDef}</p>
-          {examples.length > 0 && <p className="text-sm text-[color:var(--text-dim)] italic leading-relaxed">{examples[0]}</p>}
+          {examples.length > 0 && <p className="text-sm text-[color:var(--text-dim)] italic leading-relaxed">{examples[0].en}</p>}
           {coll.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {coll.map((c, i) => <span key={i} className="text-xs px-2.5 py-1 rounded-full bg-accent-500/15 text-[color:var(--accent-text)] ring-1 ring-accent-500/30">{c}</span>)}
@@ -5643,8 +5712,8 @@ function SearchView({ activeList, updateList, apiKey, model, provider, onOpenDet
               <div>
                 <p className="text-[11px] uppercase tracking-wide text-[color:var(--text-faint)] mb-2">Example sentences</p>
                 <div className="space-y-1.5">
-                  {examples.slice(0, 2).map((s, i) => (
-                    <p key={i} className="text-sm text-[color:var(--text-dim)] italic leading-relaxed">{s}</p>
+                  {examples.slice(0, 2).map((ex, i) => (
+                    <p key={i} className="text-sm text-[color:var(--text-dim)] italic leading-relaxed">{ex.en}</p>
                   ))}
                 </div>
               </div>
@@ -5924,11 +5993,27 @@ function GuestBattleEntry({ inviteId }) {
 function Root() {
   const [authed, setAuthed] = useState(() => load(LS.loggedIn, false));
   CURRENT_EMAIL = load(LS.currentEmail, null);
-  // A shared battle link (?battle=<id>) opened by someone without an
+  // A shared battle link (#battle?room=<id>) opened by someone without an
   // account skips login entirely and goes straight to the guest-name gate;
   // an already-logged-in user keeps going through the normal App flow,
-  // which has its own pendingInvite handling for the same query param.
-  const battleInviteId = new URLSearchParams(location.search).get("battle");
+  // which has its own pendingInvite handling for the same hash format.
+  // Tracked in state (not just derived per-render) with a hashchange
+  // listener — navigating to a link that differs from the current page
+  // only by its hash is a same-document navigation in every browser (no
+  // reload), so without this, pasting/clicking a battle link into an
+  // already-open tab would never be noticed.
+  const [battleInviteId, setBattleInviteId] = useState(() => {
+    const h = parseHash();
+    return h.section === "battle" ? h.params.get("room") : null;
+  });
+  useEffect(() => {
+    const onHashChange = () => {
+      const h = parseHash();
+      setBattleInviteId(h.section === "battle" ? h.params.get("room") : null);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
   const skipAuthForGuest = battleInviteId && (!authed || !CURRENT_EMAIL);
 
   const doLogout = () => {
