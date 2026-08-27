@@ -1172,6 +1172,47 @@ function App({ onLogout }) {
   useEffect(() => save(nsKey("uiLang"), uiLang), [uiLang]);
   useEffect(() => save(LS.theme, theme), [theme]);
   useEffect(() => save(nsKey("lists"), lists), [lists]);
+  /* ---- Word list sync across browsers/devices ----
+   * Last-write-wins by timestamp: on login, pull the server's copy if it's
+   * newer than this browser's, otherwise push this browser's copy up. Every
+   * local edit after that gets pushed too (debounced). Not a real merge —
+   * fine for one person's own devices, not built for concurrent editing. */
+  const listsUpdatedAtRef = useRef(load(nsKey("listsUpdatedAt"), 0));
+  const listsSyncedRef = useRef(false);
+  const skipNextListsPushRef = useRef(false);
+  useEffect(() => {
+    const token = load(LS.sessionToken, null);
+    if (!token) { listsSyncedRef.current = true; return; }
+    authRequest("/lists", "GET", null, token)
+      .then((d) => {
+        if (d?.lists && d.updatedAt > listsUpdatedAtRef.current) {
+          skipNextListsPushRef.current = true;
+          listsUpdatedAtRef.current = d.updatedAt;
+          save(nsKey("listsUpdatedAt"), d.updatedAt);
+          setLists(repairListIds(d.lists));
+        } else {
+          const now = Date.now();
+          authRequest("/lists", "POST", { lists, updatedAt: now }, token).catch(() => {});
+          listsUpdatedAtRef.current = now;
+          save(nsKey("listsUpdatedAt"), now);
+        }
+      })
+      .catch(() => {})
+      .finally(() => { listsSyncedRef.current = true; });
+  }, []);
+  useEffect(() => {
+    if (!listsSyncedRef.current) return;
+    if (skipNextListsPushRef.current) { skipNextListsPushRef.current = false; return; }
+    const token = load(LS.sessionToken, null);
+    if (!token) return;
+    const t = setTimeout(() => {
+      const now = Date.now();
+      authRequest("/lists", "POST", { lists, updatedAt: now }, token).catch(() => {});
+      listsUpdatedAtRef.current = now;
+      save(nsKey("listsUpdatedAt"), now);
+    }, 2000);
+    return () => clearTimeout(t);
+  }, [lists]);
   useEffect(() => save(nsKey("activeList"), activeListId), [activeListId]);
   useEffect(() => save(nsKey("stats"), stats), [stats]);
   useEffect(() => save(nsKey("streak"), streak), [streak]);
@@ -3495,11 +3536,12 @@ function providerThrottleMs(provider) {
    rejects browser CORS requests outright, so it's routed through a small
    stateless relay (see OPENAI_PROXY_URL) that only forwards the caller's
    own key — it never stores or sees it beyond that single request. */
-async function callAI({ provider, apiKey, model, system, userText, images, maxTokens = 1024 }) {
+async function callAI({ provider, apiKey, model, system, userText, images, pdfBase64, maxTokens = 1024 }) {
   if (!apiKey) throw new Error("No API key set for this provider.");
 
   if (provider === "gemini") {
     const parts = [];
+    if (pdfBase64) parts.push({ inline_data: { mime_type: "application/pdf", data: pdfBase64 } });
     if (images) images.forEach((img) => parts.push({ inline_data: { mime_type: "image/png", data: img } }));
     parts.push({ text: userText });
     const data = await fetchWithRetry(
@@ -3607,15 +3649,19 @@ async function fetchSuggestions(query) {
 }
 
 async function searchDictionary(word, apiKey, model, provider) {
-  const free = await freeDictLookup(word).catch(() => null);
-  let extra = null;
-  if (apiKey) {
-    const system = `You are a bilingual English-Chinese dictionary. Given an English word, respond with ONLY valid JSON (no markdown, no preamble): {"def": string, "chinese": string, "vibe": "formal"|"academic"|"casual"|"literary", "coll": string}. "def" is one clear English sentence (only needed if you're confident; otherwise empty string). "chinese" is a concise Simplified Chinese translation/definition. "coll" is 3 comma-separated natural English collocations.`;
-    try {
-      const raw = await callAI({ provider, apiKey, model, system, userText: `Word: ${word}`, maxTokens: 250 });
-      extra = JSON.parse(raw.replace(/```json|```/g, "").trim());
-    } catch { /* Chinese/enrichment is optional — English def alone is still useful */ }
-  }
+  // The free lookup and the AI enrichment call are independent (the AI
+  // call just takes the word, not the free result), so run them in
+  // parallel instead of one after another — roughly halves wait time.
+  const aiPromise = apiKey
+    ? (async () => {
+        const system = `You are a bilingual English-Chinese dictionary. Given an English word, respond with ONLY valid JSON (no markdown, no preamble): {"def": string, "chinese": string, "vibe": "formal"|"academic"|"casual"|"literary", "coll": string}. "def" is one clear English sentence (only needed if you're confident; otherwise empty string). "chinese" is a concise Simplified Chinese translation/definition. "coll" is 3 comma-separated natural English collocations.`;
+        try {
+          const raw = await callAI({ provider, apiKey, model, system, userText: `Word: ${word}`, maxTokens: 250 });
+          return JSON.parse(raw.replace(/```json|```/g, "").trim());
+        } catch { return null; /* Chinese/enrichment is optional — English def alone is still useful */ }
+      })()
+    : Promise.resolve(null);
+  const [free, extra] = await Promise.all([freeDictLookup(word).catch(() => null), aiPromise]);
   const def = free?.def || extra?.def || "";
   if (!def && !extra) return null;
   return { word, def, chinese: extra?.chinese || "", vibe: extra?.vibe || "formal", coll: extra?.coll || "" };
@@ -3816,6 +3862,58 @@ function extractJsonArray(raw) {
   return JSON.parse(cleaned.slice(start, end + 1));
 }
 
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(",")[1]);
+    reader.onerror = () => reject(reader.error || new Error("Couldn't read that file."));
+    reader.readAsDataURL(file);
+  });
+}
+
+// One-shot whole-document extraction via Gemini's native PDF understanding
+// — replaces the pdf.js-extract-text -> chunk -> up to 25 sequential AI
+// calls pipeline with a single request, since Gemini reads the file
+// directly. Also handles scanned/photographed PDFs for free this way
+// (Gemini reads the document as submitted either way), so the separate
+// page-image vision fallback isn't needed on this path either. Gemini-only
+// (per its native PDF support); other providers/no-key still use the
+// chunked-text pipeline below. Capped at 15MB raw — comfortably under the
+// ~20MB total request size Gemini's inline_data allows once base64-inflated.
+const PDF_DIRECT_MAX_BYTES = 15 * 1024 * 1024;
+async function extractWordsFromPdfDirect(file, apiKey, model) {
+  if (file.size > PDF_DIRECT_MAX_BYTES) throw new Error("PDF_TOO_LARGE_FOR_DIRECT");
+  const pdfBase64 = await fileToBase64(file);
+  const system = `You are a professional vocabulary extraction assistant. Analyze the attached PDF document and identify all unique, meaningful English vocabulary words suitable for learning (ignore common stop words like "the", "and", "is", prepositions, and numbers). For each, give a short English definition and a short Chinese definition — from the document if visible, otherwise from your own knowledge of the word.
+
+Return ONLY a raw text list, one word per line, nothing else, in this exact format:
+word | english definition | chinese definition
+
+Example:
+persistent | continuing firmly despite difficulty | 坚持不懈的
+ubiquitous | found everywhere | 无处不在的
+
+No markdown headers, no numbering, no bullets, no introductory text, no conversational fluff. Strictly one word per line.`;
+  const raw = await callAI({ provider: "gemini", apiKey, model, system, userText: "Extract the vocabulary words from this document.", pdfBase64, maxTokens: 8000 });
+  const lines = raw.split("\n")
+    .map((l) => l.trim().replace(/^[\d]+[\.\)]\s*/, "").replace(/^[-*•]\s*/, ""))
+    .filter(Boolean)
+    .map((l) => {
+      const [word, def, chinese] = l.split("|").map((p) => (p || "").trim());
+      return { word, def: def || "", chinese: chinese || "" };
+    })
+    .filter((w) => /^[a-zA-Z][a-zA-Z '-]{0,29}$/.test(w.word));
+  const seen = new Set();
+  const deduped = [];
+  for (const w of lines) {
+    const key = w.word.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(w);
+  }
+  return deduped;
+}
+
 async function extractWordsWithAI(rawText, apiKey, model, onProgress, provider = DEFAULT_PROVIDER) {
   const CHUNK = 12000;
   const chunks = [];
@@ -3956,6 +4054,26 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
 
   const runAiExtract = () => runAiExtractOn(importText);
 
+  // Fast path for PDFs specifically: hand the whole file to Gemini in one
+  // request instead of extracting text locally and chunking it into up to
+  // 25 sequential AI calls. Swallows all failures into a plain `false` —
+  // the caller falls back to the standard pipeline rather than dead-ending.
+  const runAiExtractFromPdfDirect = async (file) => {
+    setAiParsing(true); setAiError(null); setAiNotice(null); setAiProgress(null);
+    try {
+      const found = await extractWordsFromPdfDirect(file, apiKey, model);
+      if (!found.length) return false;
+      const words = found.map((w) => freshWord({ word: w.word, def: w.def, chinese: w.chinese || undefined, vibe: "", coll: "" }));
+      setPreview(words);
+      setPlanDraft(suggestPlan(words.length));
+      return true;
+    } catch {
+      return false;
+    } finally {
+      setAiParsing(false); setAiProgress(null);
+    }
+  };
+
   const runAiExtractFromImages = async (images) => {
     if (!apiKey || !images.length) return false;
     setAiParsing(true); setAiError(null); setAiNotice(null); setAiProgress(null);
@@ -3987,6 +4105,20 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
   const handlePdfUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    setPdfError(null);
+
+    // Fast path: Gemini reads the whole PDF directly (one request, and it
+    // handles scanned/photographed pages the same way as normal text —
+    // no separate local text-extraction or vision-fallback pass needed).
+    // Falls through to the standard pipeline below on any failure.
+    if (apiKey && provider === "gemini" && file.size <= PDF_DIRECT_MAX_BYTES) {
+      setPdfLoading(true);
+      const ok = await runAiExtractFromPdfDirect(file);
+      setPdfLoading(false);
+      if (ok) { if (fileRef.current) fileRef.current.value = ""; return; }
+      setAiError(null);
+    }
+
     setPdfLoading(true); setPdfError(null);
     try {
       const { text, truncated, totalPages, pageCount, looksScanned } = await extractPdfText(file, (current, total) => setPdfProgress({ current, total }));
