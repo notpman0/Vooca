@@ -3552,7 +3552,11 @@ async function callAI({ provider, apiKey, model, system, userText, images, pdfBa
     );
     const cand = data.candidates?.[0];
     if (!cand) throw new Error(data.promptFeedback?.blockReason ? `Blocked: ${data.promptFeedback.blockReason}` : "Gemini returned no response.");
-    return (cand.content?.parts || []).map((p) => p.text || "").join("").trim();
+    const text = (cand.content?.parts || []).map((p) => p.text || "").join("").trim();
+    // Sentinel rather than changing callAI's plain-string return everywhere
+    // it's used — callers that care (e.g. the PDF extractor) check for and
+    // strip it; everyone else's output never legitimately ends this way.
+    return cand.finishReason === "MAX_TOKENS" ? `${text}\n[[VOOCA_TRUNCATED]]` : text;
   }
 
   if (provider === "openai") {
@@ -3884,18 +3888,22 @@ const PDF_DIRECT_MAX_BYTES = 15 * 1024 * 1024;
 async function extractWordsFromPdfDirect(file, apiKey, model) {
   if (file.size > PDF_DIRECT_MAX_BYTES) throw new Error("PDF_TOO_LARGE_FOR_DIRECT");
   const pdfBase64 = await fileToBase64(file);
-  const system = `You are a professional vocabulary extraction assistant. Analyze the attached PDF document and identify all unique, meaningful English vocabulary words suitable for learning (ignore common stop words like "the", "and", "is", prepositions, and numbers). For each, give a short English definition and a short Chinese definition — from the document if visible, otherwise from your own knowledge of the word.
+  const system = `You are a professional vocabulary extraction assistant. Analyze the attached PDF document COMPLETELY, from the first page to the last, and identify EVERY unique, meaningful English vocabulary word suitable for learning (ignore common stop words like "the", "and", "is", prepositions, and numbers) — a document with hundreds of words should produce hundreds of output lines, not a partial sample. For each, give a VERY SHORT English definition (2-6 words) and a short Chinese definition — from the document if visible, otherwise from your own knowledge of the word. Keep definitions terse so the full word list fits.
 
 Return ONLY a raw text list, one word per line, nothing else, in this exact format:
 word | english definition | chinese definition
 
 Example:
-persistent | continuing firmly despite difficulty | 坚持不懈的
+persistent | continuing despite difficulty | 坚持不懈的
 ubiquitous | found everywhere | 无处不在的
 
-No markdown headers, no numbering, no bullets, no introductory text, no conversational fluff. Strictly one word per line.`;
-  const raw = await callAI({ provider: "gemini", apiKey, model, system, userText: "Extract the vocabulary words from this document.", pdfBase64, maxTokens: 8000 });
-  const lines = raw.split("\n")
+No markdown headers, no numbering, no bullets, no introductory text, no conversational fluff. Strictly one word per line, covering the entire document.`;
+  // Generous cap — a few hundred words with short bilingual definitions is
+  // a lot of output text, and a truncated response silently under-imports
+  // (this is what was cutting large PDFs off partway through).
+  const raw = await callAI({ provider: "gemini", apiKey, model, system, userText: "Extract every vocabulary word from this document, start to finish.", pdfBase64, maxTokens: 32768 });
+  const truncated = raw.includes("[[VOOCA_TRUNCATED]]");
+  const lines = raw.replace("[[VOOCA_TRUNCATED]]", "").split("\n")
     .map((l) => l.trim().replace(/^[\d]+[\.\)]\s*/, "").replace(/^[-*•]\s*/, ""))
     .filter(Boolean)
     .map((l) => {
@@ -3911,7 +3919,7 @@ No markdown headers, no numbering, no bullets, no introductory text, no conversa
     seen.add(key);
     deduped.push(w);
   }
-  return deduped;
+  return { words: deduped, truncated };
 }
 
 async function extractWordsWithAI(rawText, apiKey, model, onProgress, provider = DEFAULT_PROVIDER) {
@@ -4061,11 +4069,14 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
   const runAiExtractFromPdfDirect = async (file) => {
     setAiParsing(true); setAiError(null); setAiNotice(null); setAiProgress(null);
     try {
-      const found = await extractWordsFromPdfDirect(file, apiKey, model);
+      const { words: found, truncated } = await extractWordsFromPdfDirect(file, apiKey, model);
       if (!found.length) return false;
       const words = found.map((w) => freshWord({ word: w.word, def: w.def, chinese: w.chinese || undefined, vibe: "", coll: "" }));
       setPreview(words);
       setPlanDraft(suggestPlan(words.length));
+      if (truncated) {
+        setAiNotice(`Found ${found.length} words, but this document is large enough that Gemini's response got cut off partway through — some words near the end may be missing. Review the list below, or split the PDF and import the rest separately.`);
+      }
       return true;
     } catch {
       return false;
