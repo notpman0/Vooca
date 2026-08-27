@@ -3777,7 +3777,7 @@ async function renderPdfPagesToImages(file, pageCount, onProgress) {
 }
 
 async function extractWordsFromImages(images, apiKey, model, onProgress, provider = DEFAULT_PROVIDER) {
-  const system = `You are looking at scanned or photographed pages from a vocabulary word list. Read all visible text in the image(s) and identify the actual vocabulary words being taught, along with their definitions where clearly visible. Ignore headers, page numbers, decorative elements, and instructions. Return ONLY valid JSON (no markdown, no preamble): an array of objects like [{"word": string, "def": string}]. "def" should be empty string if no definition is visible for that word. Do not invent definitions.`;
+  const system = `You are looking at scanned or photographed pages from a vocabulary word list. Read all visible text in the image(s) and identify the actual vocabulary words being taught. For each, give a short English definition and a short Chinese definition — from the surrounding text if visible, otherwise from your own knowledge of the word. Ignore headers, page numbers, decorative elements, and instructions. Return ONLY valid JSON (no markdown, no preamble): an array of objects like [{"word": string, "def": string, "chinese": string}].`;
   const BATCH = 4;
   let all = [];
   let failedBatches = 0;
@@ -3802,7 +3802,7 @@ async function extractWordsFromImages(images, apiKey, model, onProgress, provide
     const key = (w?.word || "").trim().toLowerCase();
     if (!key || seen.has(key)) continue;
     seen.add(key);
-    deduped.push({ word: w.word.trim(), def: (w.def || "").trim() });
+    deduped.push({ word: w.word.trim(), def: (w.def || "").trim(), chinese: (w.chinese || "").trim() });
   }
   return { words: deduped, failedBatches, totalBatches: batches.length, lastError };
 }
@@ -3821,15 +3821,22 @@ async function extractWordsWithAI(rawText, apiKey, model, onProgress, provider =
   const chunks = [];
   for (let i = 0; i < rawText.length; i += CHUNK) chunks.push(rawText.slice(i, i + CHUNK));
   const capped = chunks.slice(0, 25);
-  // Plain one-word-per-line output instead of a JSON array — far more
-  // reliable across models than asking for strict JSON (a single stray
-  // comma or an unescaped quote used to sink the whole chunk). Definitions
-  // aren't extracted here anymore either; they get filled the same way
-  // every other word in the app does, via the free-dictionary + AI pipeline
-  // right after import.
-  const system = `You are filtering raw, possibly messy text pulled from a PDF word list. It mixes real vocabulary words together with noise: definitions, page numbers, headers, instructions, part-of-speech tags, example sentences, etc.
+  // Pipe-delimited lines instead of a JSON array — far more reliable across
+  // models than strict JSON (a single stray comma or unescaped quote used
+  // to sink the whole chunk). Word, English definition, and Chinese
+  // definition all come back in this one pass now (previously just the
+  // word, requiring a separate definition-fill pass after import) — cuts
+  // a PDF import down to one AI round-trip per chunk instead of two.
+  const system = `You are filtering raw, possibly messy text pulled from a PDF word list. It mixes real vocabulary words being taught together with noise: page numbers, headers, instructions, part-of-speech tags, example sentences, etc.
 
-Filter out everything that is not itself a vocabulary word being taught, and send back only the words — as a plain list, one word per line, nothing else. No numbering, no bullets, no definitions, no explanations, no markdown, no code fences. Just the words, one per line. If a chunk has no real vocabulary words, reply with nothing.`;
+Identify only the real vocabulary words (ignore common stop words, prepositions, and numbers). For each, give a short English definition and a short Chinese definition — from the surrounding text if it's there, otherwise from your own knowledge of the word. Output ONLY one line per word, nothing else, in this exact format:
+word | english definition | chinese definition
+
+Example:
+persistent | continuing firmly despite difficulty | 坚持不懈的
+ubiquitous | found everywhere | 无处不在的
+
+No numbering, no bullets, no markdown, no code fences, no extra commentary. Just the pipe-delimited lines. If a chunk has no real vocabulary words, reply with nothing.`;
   let allWords = [];
   let failedChunks = 0;
   let lastError = null;
@@ -3837,10 +3844,15 @@ Filter out everything that is not itself a vocabulary word being taught, and sen
     onProgress && onProgress(i + 1, capped.length);
     if (i > 0) await sleep(providerThrottleMs(provider));
     try {
-      const raw = await callAI({ provider, apiKey, model, system, userText: `Raw text:\n"""${capped[i]}"""`, maxTokens: 3000 });
+      const raw = await callAI({ provider, apiKey, model, system, userText: `Raw text:\n"""${capped[i]}"""`, maxTokens: 4000 });
       const lines = raw.split("\n")
-        .map((l) => l.trim().replace(/^[\d]+[\.\)]\s*/, "").replace(/^[-*•]\s*/, "").replace(/[.,;:]+$/, ""))
-        .filter((l) => /^[a-zA-Z][a-zA-Z '-]{0,29}$/.test(l));
+        .map((l) => l.trim().replace(/^[\d]+[\.\)]\s*/, "").replace(/^[-*•]\s*/, ""))
+        .filter(Boolean)
+        .map((l) => {
+          const [word, def, chinese] = l.split("|").map((p) => (p || "").trim());
+          return { word, def: def || "", chinese: chinese || "" };
+        })
+        .filter((w) => /^[a-zA-Z][a-zA-Z '-]{0,29}$/.test(w.word));
       allWords = allWords.concat(lines);
     } catch (err) {
       failedChunks++;
@@ -3851,10 +3863,10 @@ Filter out everything that is not itself a vocabulary word being taught, and sen
   const seen = new Set();
   const deduped = [];
   for (const w of allWords) {
-    const key = w.toLowerCase();
+    const key = w.word.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    deduped.push({ word: w, def: "" });
+    deduped.push(w);
   }
   return { words: deduped, failedChunks, totalChunks: capped.length, truncated: chunks.length > capped.length, lastError };
 }
@@ -3885,6 +3897,7 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
   const [aiProgress, setAiProgress] = useState(null);
   const [aiError, setAiError] = useState(null);
   const [aiNotice, setAiNotice] = useState(null);
+  const [importSuccessMsg, setImportSuccessMsg] = useState(null);
   const fileRef = useRef(null);
 
   const addOfficialList = (key) => {
@@ -3923,7 +3936,7 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
           : `${PROVIDERS[provider].short} couldn't find any vocabulary words in that text — try pasting a cleaner excerpt.`);
         return false;
       }
-      const words = found.map((w) => freshWord({ word: w.word, def: w.def, vibe: "", coll: "" }));
+      const words = found.map((w) => freshWord({ word: w.word, def: w.def, chinese: w.chinese || undefined, vibe: "", coll: "" }));
       setPreview(words);
       setPlanDraft(suggestPlan(words.length));
       if (failedChunks || truncated) {
@@ -3956,7 +3969,7 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
           : `${PROVIDERS[provider].short} couldn't make out any vocabulary words in those page images — try a clearer scan or paste the words manually.`);
         return false;
       }
-      const words = found.map((w) => freshWord({ word: w.word, def: w.def, vibe: "", coll: "" }));
+      const words = found.map((w) => freshWord({ word: w.word, def: w.def, chinese: w.chinese || undefined, vibe: "", coll: "" }));
       setPreview(words);
       setPlanDraft(suggestPlan(words.length));
       if (failedBatches) {
@@ -4049,9 +4062,12 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
     if (!preview || !preview.length) return;
     const id = `custom-${Date.now()}`;
     const name = importName.trim() || `Imported list (${preview.length})`;
+    const count = preview.length;
     setLists((ls) => [...ls, { id, name, source: "custom", plan: planDraft, createdAt: Date.now(), words: preview }]);
     setActiveListId(id);
     setImportText(""); setImportName(""); setPreview(null); setPlanDraft(null); setPlanRationale(null);
+    setImportSuccessMsg(`Successfully imported ${count} vocabulary word${count === 1 ? "" : "s"}! 🎉`);
+    setTimeout(() => setImportSuccessMsg(null), 5000);
   };
 
   const optimizePlanWithAI = async () => {
@@ -4107,6 +4123,12 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
         <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-text)] mb-1">库 · Word Lists</p>
         <h2 className="text-2xl font-semibold text-[color:var(--text)]">Choose what to study</h2>
       </header>
+
+      {importSuccessMsg && (
+        <div className="animate-float-in rounded-xl bg-emerald-500/10 ring-1 ring-emerald-500/30 px-4 py-3 text-sm font-medium text-emerald-400">
+          {importSuccessMsg}
+        </div>
+      )}
 
       <section>
         <h3 className="text-sm font-semibold text-[color:var(--text)] mb-3">Official word lists</h3>
