@@ -179,7 +179,6 @@ const Target = (p) => <Icon {...p} path='<circle cx="12" cy="12" r="10"/><circle
 const Zap = (p) => <Icon {...p} path='<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>' />;
 const GraduationCap = (p) => <Icon {...p} path='<path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c0 1.5 2.5 3 6 3s6-1.5 6-3v-5"/><path d="M22 10v6"/>' />;
 const FileText = (p) => <Icon {...p} path='<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/>' />;
-const BrandMark = (p) => <Icon {...p} path='<path d="M6.5 5.2 4 2M17.5 5.2 20 2"/><path d="M12 4c-3.6 0-6.3 2.6-6.3 6.2v3c0 3 2.4 5.4 5.4 5.4h1.8c3 0 5.4-2.4 5.4-5.4v-3C18.3 6.6 15.6 4 12 4Z"/><circle cx="9.3" cy="10.6" r="1.5" fill="currentColor" stroke="none"/><circle cx="14.7" cy="10.6" r="1.5" fill="currentColor" stroke="none"/><path d="M11 13.6h2l-1 2-1-2Z" fill="currentColor" stroke="none"/>' />;
 
 /* ---------------- Storage ----------------
    Personal app data (API key, word lists, stats, etc.) is namespaced per local
@@ -880,9 +879,7 @@ function AuthGate({ onAuth }) {
       style={{ fontFamily: "'Inter', ui-sans-serif, system-ui" }}>
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
-          <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 flex items-center justify-center shadow-sm shadow-violet-500/30 mb-3">
-            <BrandMark size={24} className="text-white" />
-          </div>
+          <img src="assets/icon-192.png" alt="Vooca" className="h-12 w-12 rounded-2xl shadow-sm mb-3" />
           <h1 className="text-lg font-semibold text-[color:var(--text)]">Vooca</h1>
           <p className="text-xs text-[color:var(--text-dim)] mt-0.5">Learn it. Own it.</p>
         </div>
@@ -1298,9 +1295,7 @@ function App({ onLogout }) {
 
       <div className="md:hidden fixed top-0 inset-x-0 z-30 h-14 flex items-center justify-between px-4 bg-[color:var(--surface2)] border-b border-[color:var(--border)]">
         <button onClick={() => { location.href = location.pathname; }} className="flex items-center gap-2 press-scale">
-          <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 flex items-center justify-center shadow-sm shadow-violet-500/30">
-            <BrandMark size={15} className="text-white" />
-          </div>
+          <img src="assets/icon-192.png" alt="Vooca" className="h-7 w-7 rounded-lg shadow-sm" />
           <h1 className="text-sm font-semibold text-[color:var(--text)]">Vooca</h1>
         </button>
         <button onClick={() => setMobileNavOpen(true)} className="p-2 -mr-2 text-[color:var(--text-dim)]">
@@ -1316,9 +1311,7 @@ function App({ onLogout }) {
         mobileNavOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}>
         <div className="px-5 py-6 border-b border-[color:var(--border)] flex items-center justify-between">
           <button onClick={() => { location.href = location.pathname; }} className="flex items-center gap-2.5 press-scale text-left">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 flex items-center justify-center shadow-sm shadow-violet-500/30">
-              <BrandMark size={18} className="text-white" />
-            </div>
+            <img src="assets/icon-192.png" alt="Vooca" className="h-9 w-9 rounded-xl shadow-sm" />
             <div>
               <h1 className="text-sm font-semibold tracking-tight text-[color:var(--text)] leading-tight">Vooca</h1>
               <p className="text-[11px] text-[color:var(--text-dim)] tracking-wide">Learn it. Own it.</p>
