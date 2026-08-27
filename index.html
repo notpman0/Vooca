@@ -1483,7 +1483,7 @@ function App({ onLogout }) {
               <Dashboard {...{ apiKey, provider, masteredCount: totalMastered, totalIntroduced, todayLearned, stats, streak, activeList, learnPending, setView, points, battleMMR: sessionInfo.battleMMR, battleWinStreak: sessionInfo.battleWinStreak, uiLang }} />
             )}
             {view === "lists" && (
-              <WordLists {...{ lists, setLists, activeListId, setActiveListId, apiKey, model, provider }} />
+              <WordLists {...{ lists, setLists, activeListId, setActiveListId, apiKey, model, provider, uiLang }} />
             )}
             {view === "deck" && activeList && (
               <Deck list={activeList} lists={lists} setActiveListId={setActiveListId} activeListId={activeListId}
@@ -3991,7 +3991,10 @@ async function suggestPlanWithAI(words, apiKey, model, provider = DEFAULT_PROVID
   return extractJsonArray(`[${raw.replace(/```json|```/g, "").trim()}]`)[0];
 }
 
-function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, model, provider }) {
+function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, model, provider, uiLang }) {
+  const isZh = uiLang === "zh";
+  const [showCommunity, setShowCommunity] = useState(false);
+  const [publishingListId, setPublishingListId] = useState(null);
   const [importText, setImportText] = useState("");
   const [importName, setImportName] = useState("");
   const [preview, setPreview] = useState(null);
@@ -4266,6 +4269,33 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
     setLists((ls) => ls.filter((l) => l.id !== id));
   };
 
+  const publishList = async (list, name, category) => {
+    const token = load(LS.sessionToken, null);
+    if (!token) return { error: "Sign in to publish a list." };
+    try {
+      const r = await authRequest("/lists/publish", "POST", { name, category, words: list.words }, token);
+      return { ok: true, id: r.id };
+    } catch (err) {
+      return { error: err.message || "Couldn't publish that list." };
+    }
+  };
+
+  const importPublicList = async (id) => {
+    const token = load(LS.sessionToken, null);
+    try {
+      const r = await authRequest(`/lists/public/${id}`, "GET", null, token);
+      const words = r.words.map((w) => freshWord({ word: w.word, def: w.def, chinese: w.chinese || undefined, examples: w.examples, vibe: w.vibe || "", coll: w.coll || "" }));
+      const newId = `custom-${Date.now()}`;
+      setLists((ls) => [...ls, { id: newId, name: r.name, source: "custom", plan: suggestPlan(words.length), createdAt: Date.now(), words }]);
+      setActiveListId(newId);
+      setImportSuccessMsg(`Imported "${r.name}" (${words.length} words) from ${r.ownerUsername}! 🎉`);
+      setTimeout(() => setImportSuccessMsg(null), 5000);
+      return { ok: true };
+    } catch (err) {
+      return { error: err.message || "Couldn't import that list." };
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-8 py-6 sm:py-10 space-y-10">
       <header>
@@ -4277,6 +4307,30 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
         <div className="animate-float-in rounded-xl bg-emerald-500/10 ring-1 ring-emerald-500/30 px-4 py-3 text-sm font-medium text-emerald-400">
           {importSuccessMsg}
         </div>
+      )}
+
+      <button onClick={() => setShowCommunity(true)}
+        className="w-full flex items-center gap-4 rounded-xl bg-gradient-to-br from-accent-500/15 to-transparent ring-1 ring-[color:var(--border)] p-5 text-left hover:ring-accent-500/40 transition">
+        <div className="h-11 w-11 rounded-xl bg-accent-500/15 ring-1 ring-accent-500/30 flex items-center justify-center shrink-0">
+          <Globe size={20} className="text-[color:var(--accent-text)]" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-[color:var(--text)]">{isZh ? "词书中心 · 社区词单" : "Word List Library"}</p>
+          <p className="text-xs text-[color:var(--text-dim)] mt-0.5">{isZh ? "浏览并导入其他用户发布的词单" : "Browse and import word lists other users have published"}</p>
+        </div>
+        <ChevronRight size={18} className="text-[color:var(--text-faint)] shrink-0" />
+      </button>
+
+      {showCommunity && (
+        <CommunityListsModal uiLang={uiLang} onClose={() => setShowCommunity(false)} onImport={importPublicList} />
+      )}
+      {publishingListId && (
+        <PublishListModal
+          list={lists.find((l) => l.id === publishingListId)}
+          uiLang={uiLang}
+          onClose={() => setPublishingListId(null)}
+          onPublish={publishList}
+        />
       )}
 
       <section>
@@ -4431,6 +4485,12 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
                     {editing ? "Close" : "Edit plan"}
                   </button>
                   {!active && <button onClick={() => setActiveListId(l.id)} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[color:var(--surface2)] text-[color:var(--text-dim)] hover:text-[color:var(--text)] ring-1 ring-[color:var(--border)]">Study this</button>}
+                  {l.source === "custom" && (
+                    <button onClick={() => setPublishingListId(l.id)}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-[color:var(--surface2)] text-[color:var(--text-dim)] hover:text-[color:var(--text)] ring-1 ring-[color:var(--border)]">
+                      <Share2 size={12} /> {isZh ? "发布" : "Publish"}
+                    </button>
+                  )}
                   {lists.length > 1 && <button onClick={() => removeList(l.id)} className="text-[color:var(--text-faint)] hover:text-rose-500 p-1"><Trash2 size={15} /></button>}
                 </div>
                 {editing && editPlanDraft && (
@@ -6074,6 +6134,149 @@ function Confetti() {
           transform: `rotate(${p.rotate}deg)`,
         }} />
       ))}
+    </div>
+  );
+}
+
+const PUBLIC_LIST_CATEGORIES = ["High School", "CET-4/6", "IELTS/TOEFL", "GRE/SAT", "Business", "General", "Other"];
+
+function PublishListModal({ list, uiLang, onClose, onPublish }) {
+  const isZh = uiLang === "zh";
+  const [name, setName] = useState(list?.name || "");
+  const [category, setCategory] = useState("General");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [done, setDone] = useState(false);
+  if (!list) return null;
+
+  const submit = async () => {
+    setLoading(true); setError(null);
+    const r = await onPublish(list, name.trim() || list.name, category);
+    setLoading(false);
+    if (r.error) setError(r.error); else setDone(true);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-6" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        {done ? (
+          <div className="text-center">
+            <div className="h-14 w-14 rounded-2xl bg-emerald-500/15 ring-1 ring-emerald-500/30 flex items-center justify-center mx-auto mb-5">
+              <Check className="text-emerald-500" size={24} />
+            </div>
+            <h3 className="text-lg font-semibold text-[color:var(--text)] mb-2">{isZh ? "发布成功！" : "Published!"}</h3>
+            <p className="text-sm text-[color:var(--text-dim)] mb-6">{isZh ? "其他用户现在可以在词书中心找到并导入这个词单。" : "Other users can now find and import this list from the Word List Library."}</p>
+            <button onClick={onClose} className="w-full px-4 py-2.5 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-medium hover:bg-accent-400">{isZh ? "完成" : "Done"}</button>
+          </div>
+        ) : (
+          <>
+            <h3 className="text-lg font-semibold text-[color:var(--text)] mb-1">{isZh ? "公开发布词单" : "Publish list publicly"}</h3>
+            <p className="text-xs text-[color:var(--text-dim)] mb-5">
+              {isZh ? `"${list.name}"（${list.words.length} 个词）将对所有用户可见和可导入。` : `"${list.name}" (${list.words.length} words) will be visible and importable by any user.`}
+            </p>
+            {error && <div className="mb-4 rounded-lg bg-rose-500/10 ring-1 ring-rose-500/30 px-3 py-2 text-xs text-rose-400">{error}</div>}
+            <label className="block text-xs font-medium text-[color:var(--text-dim)] mb-1.5">{isZh ? "词单名称" : "List name"}</label>
+            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={80}
+              className="w-full mb-4 px-3 py-2.5 rounded-lg bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] text-sm text-[color:var(--text)]" />
+            <label className="block text-xs font-medium text-[color:var(--text-dim)] mb-1.5">{isZh ? "分类" : "Category"}</label>
+            <select value={category} onChange={(e) => setCategory(e.target.value)}
+              className="w-full mb-6 px-3 py-2.5 rounded-lg bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] text-sm text-[color:var(--text)]">
+              {PUBLIC_LIST_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <div className="flex gap-2">
+              <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-lg text-sm text-[color:var(--text-dim)] hover:text-[color:var(--text)] ring-1 ring-[color:var(--border)]">{isZh ? "取消" : "Cancel"}</button>
+              <button onClick={submit} disabled={loading}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-accent-500 text-[#0a0e14] text-sm font-medium hover:bg-accent-400 disabled:opacity-50 inline-flex items-center justify-center gap-2">
+                {loading ? <Loader2 size={14} className="animate-spin" /> : <Share2 size={14} />} {isZh ? "发布" : "Publish"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CommunityListsModal({ uiLang, onClose, onImport }) {
+  const isZh = uiLang === "zh";
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [q, setQ] = useState("");
+  const [category, setCategory] = useState("");
+  const [importingId, setImportingId] = useState(null);
+  const [importedIds, setImportedIds] = useState(() => new Set());
+
+  useEffect(() => {
+    setLoading(true); setError(null);
+    const params = new URLSearchParams();
+    if (category) params.set("category", category);
+    if (q.trim()) params.set("q", q.trim());
+    const t = setTimeout(() => {
+      fetch(`${LEADERBOARD_BASE}/lists/public?${params}`)
+        .then((r) => r.json())
+        .then((d) => setEntries(d.lists || []))
+        .catch(() => setError(isZh ? "无法加载词单列表。" : "Couldn't load the list library."))
+        .finally(() => setLoading(false));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [q, category]);
+
+  const doImport = async (id) => {
+    setImportingId(id);
+    const r = await onImport(id);
+    setImportingId(null);
+    if (r.ok) setImportedIds((s) => new Set([...s, id]));
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-4 py-8" onClick={onClose}>
+      <div className="w-full max-w-2xl max-h-full overflow-hidden flex flex-col rounded-2xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="p-6 border-b border-[color:var(--border)]">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-[color:var(--text)]">{isZh ? "词书中心" : "Word List Library"}</h3>
+            <button onClick={onClose} className="p-1 text-[color:var(--text-faint)] hover:text-[color:var(--text)]"><X size={18} /></button>
+          </div>
+          <div className="relative mb-3">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--text-faint)]" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={isZh ? "搜索词单或用户名" : "Search lists or usernames"}
+              className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] text-sm text-[color:var(--text)]" />
+          </div>
+          <div className="flex gap-2 overflow-x-auto">
+            <button onClick={() => setCategory("")}
+              className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium ring-1 ${!category ? "bg-accent-500/15 ring-accent-400/40 text-[color:var(--accent-text)]" : "ring-[color:var(--border)] text-[color:var(--text-dim)]"}`}>
+              {isZh ? "全部" : "All"}
+            </button>
+            {PUBLIC_LIST_CATEGORIES.map((c) => (
+              <button key={c} onClick={() => setCategory(c)}
+                className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium ring-1 ${category === c ? "bg-accent-500/15 ring-accent-400/40 text-[color:var(--accent-text)]" : "ring-[color:var(--border)] text-[color:var(--text-dim)]"}`}>
+                {c}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-6 space-y-2.5">
+          {loading ? (
+            <div className="flex justify-center py-10"><Loader2 size={20} className="animate-spin text-[color:var(--text-faint)]" /></div>
+          ) : error ? (
+            <p className="text-sm text-[color:var(--text-faint)] text-center py-10">{error}</p>
+          ) : entries.length === 0 ? (
+            <p className="text-sm text-[color:var(--text-faint)] text-center py-10">{isZh ? "还没有人发布词单。" : "No lists published yet."}</p>
+          ) : entries.map((e) => (
+            <div key={e.id} className="flex items-center gap-3 rounded-xl bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] p-4">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-[color:var(--text)] truncate">{e.name}</p>
+                <p className="text-xs text-[color:var(--text-faint)] mt-0.5">{e.wordCount} {isZh ? "词" : "words"} · {e.category} · {isZh ? "来自" : "by"} {e.ownerUsername} · {e.importCount} {isZh ? "次导入" : "imports"}</p>
+              </div>
+              <button onClick={() => doImport(e.id)} disabled={importingId === e.id || importedIds.has(e.id)}
+                className="shrink-0 px-3.5 py-2 rounded-lg bg-accent-500 text-[#0a0e14] text-xs font-semibold hover:bg-accent-400 disabled:opacity-50 inline-flex items-center gap-1.5">
+                {importingId === e.id ? <Loader2 size={13} className="animate-spin" /> : importedIds.has(e.id) ? <Check size={13} /> : <Plus size={13} />}
+                {importedIds.has(e.id) ? (isZh ? "已导入" : "Imported") : (isZh ? "导入" : "Import")}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
