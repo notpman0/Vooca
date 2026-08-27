@@ -4296,6 +4296,22 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
     }
   };
 
+  const importOfficialDeck = async (id) => {
+    try {
+      const r = await fetch(`${LEADERBOARD_BASE}/decks/${id}`).then((res) => res.json());
+      if (!r.ok) throw new Error(r.error || "Couldn't load that deck.");
+      const words = r.words.map((w) => freshWord({ word: w.w, def: w.en, chinese: w.zh, vibe: "", coll: "" }));
+      const newId = `custom-${Date.now()}`;
+      setLists((ls) => [...ls, { id: newId, name: r.title, source: "custom", plan: suggestPlan(words.length), createdAt: Date.now(), words }]);
+      setActiveListId(newId);
+      setImportSuccessMsg(`Activated "${r.title}" (${words.length} words)! 🎉`);
+      setTimeout(() => setImportSuccessMsg(null), 5000);
+      return { ok: true };
+    } catch (err) {
+      return { error: err.message || "Couldn't activate that deck." };
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-8 py-6 sm:py-10 space-y-10">
       <header>
@@ -4316,13 +4332,13 @@ function WordLists({ lists, setLists, activeListId, setActiveListId, apiKey, mod
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-[color:var(--text)]">{isZh ? "词书中心 · 社区词单" : "Word List Library"}</p>
-          <p className="text-xs text-[color:var(--text-dim)] mt-0.5">{isZh ? "浏览并导入其他用户发布的词单" : "Browse and import word lists other users have published"}</p>
+          <p className="text-xs text-[color:var(--text-dim)] mt-0.5">{isZh ? "CET-4/6、托福、雅思、GRE、SAT 官方词书，以及社区发布的词单" : "Official CET-4/6, TOEFL, IELTS, GRE, SAT decks, plus lists the community has published"}</p>
         </div>
         <ChevronRight size={18} className="text-[color:var(--text-faint)] shrink-0" />
       </button>
 
       {showCommunity && (
-        <CommunityListsModal uiLang={uiLang} onClose={() => setShowCommunity(false)} onImport={importPublicList} />
+        <CommunityListsModal uiLang={uiLang} onClose={() => setShowCommunity(false)} onImport={importPublicList} onImportDeck={importOfficialDeck} />
       )}
       {publishingListId && (
         <PublishListModal
@@ -6197,8 +6213,11 @@ function PublishListModal({ list, uiLang, onClose, onPublish }) {
   );
 }
 
-function CommunityListsModal({ uiLang, onClose, onImport }) {
+function CommunityListsModal({ uiLang, onClose, onImport, onImportDeck }) {
   const isZh = uiLang === "zh";
+  const [source, setSource] = useState("official"); // official | community
+  const [decks, setDecks] = useState([]);
+  const [decksLoading, setDecksLoading] = useState(true);
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -6208,6 +6227,11 @@ function CommunityListsModal({ uiLang, onClose, onImport }) {
   const [importedIds, setImportedIds] = useState(() => new Set());
 
   useEffect(() => {
+    fetch(`${LEADERBOARD_BASE}/decks`).then((r) => r.json()).then((d) => setDecks(d.decks || [])).catch(() => {}).finally(() => setDecksLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (source !== "community") return;
     setLoading(true); setError(null);
     const params = new URLSearchParams();
     if (category) params.set("category", category);
@@ -6220,14 +6244,20 @@ function CommunityListsModal({ uiLang, onClose, onImport }) {
         .finally(() => setLoading(false));
     }, 250);
     return () => clearTimeout(t);
-  }, [q, category]);
+  }, [q, category, source]);
 
   const doImport = async (id) => {
     setImportingId(id);
-    const r = await onImport(id);
+    const r = source === "official" ? await onImportDeck(id) : await onImport(id);
     setImportingId(null);
     if (r.ok) setImportedIds((s) => new Set([...s, id]));
   };
+
+  const officialFiltered = decks.filter((d) => {
+    if (category && d.category !== category) return false;
+    if (q.trim() && !d.title.toLowerCase().includes(q.trim().toLowerCase())) return false;
+    return true;
+  });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-4 py-8" onClick={onClose}>
@@ -6237,9 +6267,19 @@ function CommunityListsModal({ uiLang, onClose, onImport }) {
             <h3 className="text-lg font-semibold text-[color:var(--text)]">{isZh ? "词书中心" : "Word List Library"}</h3>
             <button onClick={onClose} className="p-1 text-[color:var(--text-faint)] hover:text-[color:var(--text)]"><X size={18} /></button>
           </div>
+          <div className="flex gap-1.5 mb-4 p-1 rounded-lg bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] w-fit">
+            <button onClick={() => setSource("official")}
+              className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition ${source === "official" ? "bg-accent-500 text-[#0a0e14]" : "text-[color:var(--text-dim)]"}`}>
+              {isZh ? "官方词书" : "Official Decks"}
+            </button>
+            <button onClick={() => setSource("community")}
+              className={`px-3.5 py-1.5 rounded-md text-xs font-medium transition ${source === "community" ? "bg-accent-500 text-[#0a0e14]" : "text-[color:var(--text-dim)]"}`}>
+              {isZh ? "社区词单" : "Community"}
+            </button>
+          </div>
           <div className="relative mb-3">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[color:var(--text-faint)]" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={isZh ? "搜索词单或用户名" : "Search lists or usernames"}
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={source === "official" ? (isZh ? "搜索词书" : "Search decks") : (isZh ? "搜索词单或用户名" : "Search lists or usernames")}
               className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] text-sm text-[color:var(--text)]" />
           </div>
           <div className="flex gap-2 overflow-x-auto">
@@ -6256,7 +6296,25 @@ function CommunityListsModal({ uiLang, onClose, onImport }) {
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-6 space-y-2.5">
-          {loading ? (
+          {source === "official" ? (
+            decksLoading ? (
+              <div className="flex justify-center py-10"><Loader2 size={20} className="animate-spin text-[color:var(--text-faint)]" /></div>
+            ) : officialFiltered.length === 0 ? (
+              <p className="text-sm text-[color:var(--text-faint)] text-center py-10">{isZh ? "没有匹配的词书。" : "No matching decks."}</p>
+            ) : officialFiltered.map((d) => (
+              <div key={d.id} className="flex items-center gap-3 rounded-xl bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] p-4">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-[color:var(--text)] truncate">{d.title}</p>
+                  <p className="text-xs text-[color:var(--text-faint)] mt-0.5">{d.totalWords} {isZh ? "词" : "words"} · {d.category}</p>
+                </div>
+                <button onClick={() => doImport(d.id)} disabled={importingId === d.id || importedIds.has(d.id)}
+                  className="shrink-0 px-3.5 py-2 rounded-lg bg-accent-500 text-[#0a0e14] text-xs font-semibold hover:bg-accent-400 disabled:opacity-50 inline-flex items-center gap-1.5">
+                  {importingId === d.id ? <Loader2 size={13} className="animate-spin" /> : importedIds.has(d.id) ? <Check size={13} /> : <Plus size={13} />}
+                  {importedIds.has(d.id) ? (isZh ? "已激活" : "Activated") : (isZh ? "激活" : "Activate Deck")}
+                </button>
+              </div>
+            ))
+          ) : loading ? (
             <div className="flex justify-center py-10"><Loader2 size={20} className="animate-spin text-[color:var(--text-faint)]" /></div>
           ) : error ? (
             <p className="text-sm text-[color:var(--text-faint)] text-center py-10">{error}</p>
