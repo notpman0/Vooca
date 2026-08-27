@@ -98,6 +98,8 @@
   @keyframes pop { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); } }
   @keyframes softPulse { 0%, 100% { box-shadow: 0 0 0 0 rgb(var(--accent-500) / 0.35); } 50% { box-shadow: 0 0 0 8px rgb(var(--accent-500) / 0); } }
   @keyframes floatIn { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+  @keyframes floatScore { 0% { opacity: 0; transform: translate(-50%, 4px) scale(0.85); } 20% { opacity: 1; transform: translate(-50%, -6px) scale(1.05); } 80% { opacity: 1; transform: translate(-50%, -22px) scale(1); } 100% { opacity: 0; transform: translate(-50%, -34px) scale(1); } }
+  .animate-float-score { animation: floatScore 1.4s ease-out both; }
   @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
   @keyframes confettiFall { 0% { transform: translateY(-20px) rotate(0deg); opacity: 1; } 100% { transform: translateY(140px) rotate(360deg); opacity: 0; } }
 
@@ -320,11 +322,14 @@ const VOCAB_TEST_FAKES = ["glimmerate", "trepidous", "fluxenary", "consolute", "
  * feature's calibration; battle ranks need their own difficulty curve and a
  * 6th (Challenger) band the size test doesn't have. */
 const BATTLE_ROUNDS = 7;
-const BATTLE_ROUND_MS = 8000;
+const BATTLE_ROUND_MS = 10000;
 const BATTLE_QUEUE_TIMEOUT_MS = 5000;
-const BATTLE_SPEED_BONUS_WINDOW_MS = 1500;
+const BATTLE_MAX_SCORE = 500;
+const BATTLE_MIN_SCORE = 100; // floor for any correct answer, however late
 const BATTLE_WRONG_FREEZE_MS = 1500;
-const BATTLE_COMBO_BONUS_AT = 2; // 2 consecutive fast-correct = 2x, 3+ = 3x
+// Consecutive-correct streak -> score multiplier. 1-2 correct: 1.0x, 3-4: 1.2x, 5+: 1.5x.
+const BATTLE_STREAK_TIERS = [{ at: 5, mult: 1.5 }, { at: 3, mult: 1.2 }, { at: 0, mult: 1.0 }];
+const BATTLE_STREAK_SHOW_FIRE_AT = 3; // 🔥 badge once the multiplier kicks in
 const BATTLE_WIN_STREAK_DISPLAY_AT = 2; // show the 🔥 badge starting here
 const BATTLE_WIN_STREAK_BONUS_AT = 3; // must match worker.js — MMR bonus kicks in here
 const BATTLE_RANKS = [
@@ -358,46 +363,46 @@ const BOT_PROFILE = {
 // "A1" by a stricter academic definition.
 const BATTLE_WORD_TIERS = {
   Bronze: [
-    { w: "apple", zh: "苹果" }, { w: "journey", zh: "旅程" }, { w: "silent", zh: "安静的" }, { w: "protect", zh: "保护" },
-    { w: "kitchen", zh: "厨房" }, { w: "brave", zh: "勇敢的" }, { w: "gentle", zh: "温和的" }, { w: "forest", zh: "森林" },
-    { w: "quickly", zh: "快地" }, { w: "danger", zh: "危险" }, { w: "freedom", zh: "自由" }, { w: "seldom", zh: "很少" },
-    { w: "honest", zh: "诚实的" }, { w: "wooden", zh: "木制的" }, { w: "narrow", zh: "狭窄的" }, { w: "shallow", zh: "浅的" },
-    { w: "borrow", zh: "借" }, { w: "stranger", zh: "陌生人" }, { w: "whisper", zh: "低语" }, { w: "comfort", zh: "安慰" },
+    { w: "apple", zh: "苹果", en: "a round fruit that grows on trees" }, { w: "journey", zh: "旅程", en: "a trip from one place to another" }, { w: "silent", zh: "安静的", en: "making no sound" }, { w: "protect", zh: "保护", en: "to keep safe from harm" },
+    { w: "kitchen", zh: "厨房", en: "a room used for cooking" }, { w: "brave", zh: "勇敢的", en: "willing to face danger" }, { w: "gentle", zh: "温和的", en: "mild and kind" }, { w: "forest", zh: "森林", en: "a large area covered with trees" },
+    { w: "quickly", zh: "快地", en: "at a fast speed" }, { w: "danger", zh: "危险", en: "a chance of harm" }, { w: "freedom", zh: "自由", en: "the state of being free" }, { w: "seldom", zh: "很少", en: "not often" },
+    { w: "honest", zh: "诚实的", en: "truthful and sincere" }, { w: "wooden", zh: "木制的", en: "made of wood" }, { w: "narrow", zh: "狭窄的", en: "small in width" }, { w: "shallow", zh: "浅的", en: "not deep" },
+    { w: "borrow", zh: "借", en: "to take something to return later" }, { w: "stranger", zh: "陌生人", en: "a person you don't know" }, { w: "whisper", zh: "低语", en: "to speak very softly" }, { w: "comfort", zh: "安慰", en: "a state of ease or relief" },
   ],
   Silver: [
-    { w: "achieve", zh: "达成" }, { w: "candidate", zh: "候选人" }, { w: "benefit", zh: "益处" }, { w: "persuade", zh: "说服" },
-    { w: "evaluate", zh: "评估" }, { w: "appropriate", zh: "恰当的" }, { w: "contribute", zh: "贡献" }, { w: "consequence", zh: "后果" },
-    { w: "previous", zh: "先前的" }, { w: "significant", zh: "重要的" }, { w: "occupy", zh: "占据" }, { w: "tendency", zh: "倾向" },
-    { w: "reluctant", zh: "不情愿的" }, { w: "sufficient", zh: "足够的" }, { w: "accomplish", zh: "完成" }, { w: "distribute", zh: "分发" },
-    { w: "emphasize", zh: "强调" }, { w: "guarantee", zh: "保证" }, { w: "negotiate", zh: "谈判" }, { w: "priority", zh: "优先事项" },
+    { w: "achieve", zh: "达成", en: "to succeed in doing something" }, { w: "candidate", zh: "候选人", en: "a person applying for something" }, { w: "benefit", zh: "益处", en: "an advantage gained" }, { w: "persuade", zh: "说服", en: "to convince someone to do something" },
+    { w: "evaluate", zh: "评估", en: "to judge the value of something" }, { w: "appropriate", zh: "恰当的", en: "suitable for the situation" }, { w: "contribute", zh: "贡献", en: "to give something to a shared goal" }, { w: "consequence", zh: "后果", en: "a result of an action" },
+    { w: "previous", zh: "先前的", en: "happening before" }, { w: "significant", zh: "重要的", en: "important or notable" }, { w: "occupy", zh: "占据", en: "to fill or take up space" }, { w: "tendency", zh: "倾向", en: "a natural inclination" },
+    { w: "reluctant", zh: "不情愿的", en: "unwilling to do something" }, { w: "sufficient", zh: "足够的", en: "enough for a purpose" }, { w: "accomplish", zh: "完成", en: "to complete successfully" }, { w: "distribute", zh: "分发", en: "to give out to several people" },
+    { w: "emphasize", zh: "强调", en: "to stress the importance of" }, { w: "guarantee", zh: "保证", en: "a firm promise" }, { w: "negotiate", zh: "谈判", en: "to discuss to reach an agreement" }, { w: "priority", zh: "优先事项", en: "something treated as more important" },
   ],
   Gold: [
-    { w: "coincidence", zh: "巧合" }, { w: "substantial", zh: "大量的" }, { w: "persistent", zh: "持续的" }, { w: "discrepancy", zh: "差异" },
-    { w: "feasible", zh: "可行的" }, { w: "plausible", zh: "似乎合理的" }, { w: "meticulous", zh: "一丝不苟的" }, { w: "comprehensive", zh: "全面的" },
-    { w: "controversy", zh: "争议" }, { w: "deteriorate", zh: "恶化" }, { w: "hypothesis", zh: "假设" }, { w: "inevitable", zh: "不可避免的" },
-    { w: "legitimate", zh: "合法的" }, { w: "notion", zh: "观念" }, { w: "presumably", zh: "大概" }, { w: "undermine", zh: "削弱" },
-    { w: "versatile", zh: "多才多艺的" }, { w: "restrain", zh: "抑制" }, { w: "subsequent", zh: "随后的" }, { w: "viable", zh: "可行的" },
+    { w: "coincidence", zh: "巧合", en: "an unplanned matching of events" }, { w: "substantial", zh: "大量的", en: "large in amount" }, { w: "persistent", zh: "持续的", en: "continuing firmly despite difficulty" }, { w: "discrepancy", zh: "差异", en: "a difference between things" },
+    { w: "feasible", zh: "可行的", en: "possible to do easily" }, { w: "plausible", zh: "似乎合理的", en: "seeming reasonable or likely" }, { w: "meticulous", zh: "一丝不苟的", en: "very careful about details" }, { w: "comprehensive", zh: "全面的", en: "covering everything" },
+    { w: "controversy", zh: "争议", en: "a public disagreement" }, { w: "deteriorate", zh: "恶化", en: "to become worse" }, { w: "hypothesis", zh: "假设", en: "an educated guess to be tested" }, { w: "inevitable", zh: "不可避免的", en: "certain to happen" },
+    { w: "legitimate", zh: "合法的", en: "allowed by law or rules" }, { w: "notion", zh: "观念", en: "an idea or belief" }, { w: "presumably", zh: "大概", en: "most likely, probably" }, { w: "undermine", zh: "削弱", en: "to weaken gradually" },
+    { w: "versatile", zh: "多才多艺的", en: "able to do many things well" }, { w: "restrain", zh: "抑制", en: "to hold back" }, { w: "subsequent", zh: "随后的", en: "coming after" }, { w: "viable", zh: "可行的", en: "capable of working successfully" },
   ],
   Platinum: [
-    { w: "ambiguity", zh: "模糊性" }, { w: "austere", zh: "朴素的" }, { w: "cognizant", zh: "知晓的" }, { w: "deference", zh: "尊重" },
-    { w: "empirical", zh: "经验主义的" }, { w: "extrapolate", zh: "推断" }, { w: "impetuous", zh: "冲动的" }, { w: "incongruous", zh: "不协调的" },
-    { w: "indolent", zh: "懒惰的" }, { w: "magnanimous", zh: "宽宏大量的" }, { w: "obsolete", zh: "过时的" }, { w: "paradox", zh: "悖论" },
-    { w: "redundant", zh: "多余的" }, { w: "scrupulous", zh: "一丝不苟的" }, { w: "stringent", zh: "严格的" }, { w: "tangential", zh: "离题的" },
-    { w: "vindicate", zh: "证明无罪" }, { w: "wary", zh: "谨慎的" }, { w: "zealous", zh: "热心的" }, { w: "ostensible", zh: "表面上的" },
+    { w: "ambiguity", zh: "模糊性", en: "unclear or double meaning" }, { w: "austere", zh: "朴素的", en: "severely simple and plain" }, { w: "cognizant", zh: "知晓的", en: "aware of something" }, { w: "deference", zh: "尊重", en: "respectful submission to another" },
+    { w: "empirical", zh: "经验主义的", en: "based on observation, not theory" }, { w: "extrapolate", zh: "推断", en: "to estimate beyond known data" }, { w: "impetuous", zh: "冲动的", en: "acting without thinking first" }, { w: "incongruous", zh: "不协调的", en: "not fitting the surroundings" },
+    { w: "indolent", zh: "懒惰的", en: "lazy, avoiding effort" }, { w: "magnanimous", zh: "宽宏大量的", en: "generous in forgiving others" }, { w: "obsolete", zh: "过时的", en: "no longer used" }, { w: "paradox", zh: "悖论", en: "a statement that seems to contradict itself" },
+    { w: "redundant", zh: "多余的", en: "no longer needed" }, { w: "scrupulous", zh: "一丝不苟的", en: "very careful to do things properly" }, { w: "stringent", zh: "严格的", en: "strict and demanding" }, { w: "tangential", zh: "离题的", en: "only slightly related" },
+    { w: "vindicate", zh: "证明无罪", en: "to clear from blame" }, { w: "wary", zh: "谨慎的", en: "cautious of danger" }, { w: "zealous", zh: "热心的", en: "full of enthusiasm" }, { w: "ostensible", zh: "表面上的", en: "appearing true but maybe not" },
   ],
   Diamond: [
-    { w: "ephemeral", zh: "短暂的" }, { w: "ubiquitous", zh: "无处不在的" }, { w: "pragmatic", zh: "务实的" }, { w: "scrutinize", zh: "仔细检查" },
-    { w: "cacophony", zh: "刺耳的声音" }, { w: "dichotomy", zh: "二分法" }, { w: "equivocate", zh: "含糊其辞" }, { w: "esoteric", zh: "深奥的" },
-    { w: "fastidious", zh: "挑剔的" }, { w: "iconoclast", zh: "反传统者" }, { w: "insidious", zh: "阴险的" }, { w: "mercurial", zh: "反复无常的" },
-    { w: "obfuscate", zh: "使模糊" }, { w: "parsimonious", zh: "吝啬的" }, { w: "perfunctory", zh: "敷衍的" }, { w: "quintessential", zh: "典型的" },
-    { w: "sanguine", zh: "乐观的" }, { w: "taciturn", zh: "沉默寡言的" }, { w: "vicarious", zh: "替代性的" }, { w: "conundrum", zh: "难题" },
+    { w: "ephemeral", zh: "短暂的", en: "lasting a very short time" }, { w: "ubiquitous", zh: "无处不在的", en: "found everywhere" }, { w: "pragmatic", zh: "务实的", en: "practical rather than idealistic" }, { w: "scrutinize", zh: "仔细检查", en: "to examine closely" },
+    { w: "cacophony", zh: "刺耳的声音", en: "a harsh mixture of sounds" }, { w: "dichotomy", zh: "二分法", en: "a division into two opposites" }, { w: "equivocate", zh: "含糊其辞", en: "to speak vaguely to avoid commitment" }, { w: "esoteric", zh: "深奥的", en: "understood by only a few" },
+    { w: "fastidious", zh: "挑剔的", en: "very attentive to detail" }, { w: "iconoclast", zh: "反传统者", en: "one who challenges tradition" }, { w: "insidious", zh: "阴险的", en: "harmful in a gradual, hidden way" }, { w: "mercurial", zh: "反复无常的", en: "unpredictable in mood" },
+    { w: "obfuscate", zh: "使模糊", en: "to make unclear on purpose" }, { w: "parsimonious", zh: "吝啬的", en: "extremely unwilling to spend" }, { w: "perfunctory", zh: "敷衍的", en: "done with minimal effort" }, { w: "quintessential", zh: "典型的", en: "the most typical example" },
+    { w: "sanguine", zh: "乐观的", en: "optimistic in a difficult situation" }, { w: "taciturn", zh: "沉默寡言的", en: "saying very little" }, { w: "vicarious", zh: "替代性的", en: "experienced through another person" }, { w: "conundrum", zh: "难题", en: "a confusing problem" },
   ],
   Challenger: [
-    { w: "recalcitrant", zh: "顽固的" }, { w: "perfidious", zh: "背信弃义的" }, { w: "obstreperous", zh: "喧闹反抗的" }, { w: "pusillanimous", zh: "懦弱的" },
-    { w: "sesquipedalian", zh: "爱用长词的" }, { w: "antediluvian", zh: "极过时的" }, { w: "perspicacious", zh: "有洞察力的" }, { w: "mellifluous", zh: "悦耳的" },
-    { w: "ineffable", zh: "难以言表的" }, { w: "quixotic", zh: "不切实际的" }, { w: "ersatz", zh: "假的" }, { w: "obdurate", zh: "固执的" },
-    { w: "effulgent", zh: "光辉的" }, { w: "sedulous", zh: "勤勉的" }, { w: "incorrigible", zh: "屡教不改的" }, { w: "verisimilitude", zh: "逼真性" },
-    { w: "sycophant", zh: "谄媚者" }, { w: "vituperative", zh: "谩骂的" }, { w: "truculent", zh: "好斗的" }, { w: "obstinate", zh: "固执的" },
+    { w: "recalcitrant", zh: "顽固的", en: "stubbornly resistant to authority" }, { w: "perfidious", zh: "背信弃义的", en: "deliberately deceitful" }, { w: "obstreperous", zh: "喧闹反抗的", en: "noisy and defiant" }, { w: "pusillanimous", zh: "懦弱的", en: "lacking courage" },
+    { w: "sesquipedalian", zh: "爱用长词的", en: "given to using long words" }, { w: "antediluvian", zh: "极过时的", en: "extremely old-fashioned" }, { w: "perspicacious", zh: "有洞察力的", en: "having keen judgment" }, { w: "mellifluous", zh: "悦耳的", en: "sweet and smooth sounding" },
+    { w: "ineffable", zh: "难以言表的", en: "too great for words" }, { w: "quixotic", zh: "不切实际的", en: "idealistic and impractical" }, { w: "ersatz", zh: "假的", en: "an artificial substitute" }, { w: "obdurate", zh: "固执的", en: "stubbornly refusing to change" },
+    { w: "effulgent", zh: "光辉的", en: "shining brightly" }, { w: "sedulous", zh: "勤勉的", en: "diligent and persistent" }, { w: "incorrigible", zh: "屡教不改的", en: "impossible to reform" }, { w: "verisimilitude", zh: "逼真性", en: "the appearance of being true" },
+    { w: "sycophant", zh: "谄媚者", en: "one who flatters for gain" }, { w: "vituperative", zh: "谩骂的", en: "harshly critical" }, { w: "truculent", zh: "好斗的", en: "eager to fight" }, { w: "obstinate", zh: "固执的", en: "stubbornly set in one's ways" },
   ],
 };
 
@@ -429,18 +434,27 @@ function shuffleSeeded(arr, rng) {
 // both clients agree without a round trip. Choices are the Chinese
 // translation (Baicizhan style) rather than the English gloss.
 // mode "en2zh" (default): English word prompt, 4 Chinese choices.
-// mode "zh2en": Chinese meaning prompt, 4 English word choices — same word
-// bank, just flipped, so no extra content is needed for the reverse direction.
+// mode "zh2en": Chinese meaning prompt, 4 English word choices.
+// mode "en2en": English word prompt, 4 English definition choices.
+// All three reuse the same word bank — no extra content needed per direction.
+const BATTLE_MODE_FIELDS = {
+  en2zh: { prompt: "w", answer: "zh" },
+  zh2en: { prompt: "zh", answer: "w" },
+  en2en: { prompt: "w", answer: "en" },
+};
+function battleStreakMult(streak) {
+  for (const t of BATTLE_STREAK_TIERS) if (streak >= t.at) return t.mult;
+  return 1.0;
+}
 function battleRoundsFor(seed, rankName, mode) {
   const bank = BATTLE_WORD_TIERS[rankName] || BATTLE_WORD_TIERS.Bronze;
+  const fields = BATTLE_MODE_FIELDS[mode] || BATTLE_MODE_FIELDS.en2zh;
   const rng = seededRng(`${seed}:${rankName}:${mode}`);
   const picked = shuffleSeeded(bank, rng).slice(0, Math.min(BATTLE_ROUNDS, bank.length));
-  const promptOf = mode === "zh2en" ? (w) => w.zh : (w) => w.w;
-  const answerOf = mode === "zh2en" ? (w) => w.w : (w) => w.zh;
   return picked.map((word) => {
     const distractors = shuffleSeeded(bank.filter((w) => w.w !== word.w), rng).slice(0, 3);
-    const choices = shuffleSeeded([word, ...distractors], rng).map(answerOf);
-    return { word: promptOf(word), correct: answerOf(word), choices };
+    const choices = shuffleSeeded([word, ...distractors], rng).map((w) => w[fields.answer]);
+    return { word: word[fields.prompt], correct: word[fields.answer], choices };
   });
 }
 
@@ -2231,9 +2245,9 @@ function BattleScoreBar({ label, score, pct, tint, combo }) {
       <div className="flex justify-between items-center text-xs mb-1 gap-1">
         <span className="font-medium text-[color:var(--text)] truncate">{label}</span>
         <span className="flex items-center gap-1.5 shrink-0">
-          {combo >= BATTLE_COMBO_BONUS_AT && (
+          {combo >= BATTLE_STREAK_SHOW_FIRE_AT && (
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400">
-              {combo >= 3 ? "×3" : "×2"}
+              🔥 ×{battleStreakMult(combo)}
             </span>
           )}
           <span className="text-[color:var(--text-faint)] tabular-nums">{score}</span>
@@ -2281,6 +2295,10 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite, guestToken, initia
   const answerResolverRef = useRef(null);
   const autoSubmitTimerRef = useRef(null);
   const roundStartRef = useRef(0);
+  // True only while in a live, real-opponent match — set in beginBattle,
+  // cleared once the match is settled — so navigating away mid-battle
+  // (but not mid-queue, and not against a bot) counts as a forfeit.
+  const liveMatchRef = useRef(false);
 
   useEffect(() => {
     cancelledRef.current = false;
@@ -2289,6 +2307,9 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite, guestToken, initia
       clearTimeout(autoSubmitTimerRef.current);
       // Harmless no-op if we weren't actually queued — always safe to call.
       authRequest("/battle/leave", "POST", {}, token).catch(() => {});
+      if (liveMatchRef.current && battleIdRef.current) {
+        authRequest("/battle/forfeit", "POST", { battleId: battleIdRef.current }, token).catch(() => {});
+      }
     };
   }, []);
 
@@ -2339,12 +2360,38 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite, guestToken, initia
     })();
   }, [initialBattleId]);
 
+  // Self-heal: if someone joined this player's shared invite link while
+  // they'd navigated away from the "waiting" screen (closing the local
+  // polling loop that would normally catch it), a room still got created
+  // for them server-side — a single side-effect-free check on mount
+  // recovers them straight into it instead of leaving them stuck looking
+  // at an empty menu. (Uses /battle/check, not /battle/poll, since poll
+  // also runs MMR matchmaking — we don't want landing on this screen to
+  // silently queue you against a stranger.)
+  useEffect(() => {
+    if (isGuest || pendingInvite || initialBattleId) return;
+    (async () => {
+      try {
+        const p = await authRequest("/battle/check", "GET", null, token);
+        if (cancelledRef.current || !p.battleId) return;
+        battleIdRef.current = p.battleId;
+        const state = await authRequest(`/battle/state?battleId=${p.battleId}`, "GET", null, token);
+        if (cancelledRef.current) return;
+        beginBattle({
+          isBot: false, username: state.opponentUsername,
+          rankName: rankForMmr(state.mmrs.opp).name, wordRank: state.tier, mode: state.mode, seed: p.battleId,
+        });
+      } catch { /* no pending battle — normal case, just show the menu */ }
+    })();
+  }, []);
+
   async function pollOpponentAnswer(idx) {
     const deadline = Date.now() + 15000;
     while (Date.now() < deadline) {
       if (cancelledRef.current) return { correct: false, ms: BATTLE_ROUND_MS };
       try {
         const d = await authRequest(`/battle/state?battleId=${battleIdRef.current}`, "GET", null, token);
+        if (d.forfeited === "opp") return { correct: false, ms: BATTLE_ROUND_MS, opponentForfeited: true };
         const ans = d.answers?.[idx]?.opp;
         if (ans) return ans;
       } catch { /* transient — keep polling until the deadline */ }
@@ -2353,27 +2400,20 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite, guestToken, initia
     return { correct: false, ms: BATTLE_ROUND_MS };
   }
 
-  // Baicizhan-style scoring: +100 for correct, up to +50 more for answering
-  // inside the speed-bonus window, then a combo multiplier (2x/3x) on top
-  // for consecutive fast-correct answers. Wrong answers score 0 and (for the
-  // local player only) add a short input-freeze before the next round.
+  // Baicizhan-style time-decay scoring: 500 near-instant, decaying linearly to a 100
+  // floor by ~8s into the 10s round (then flat 100 for the rest of it).
   function pointsFor(a) {
     if (!a.correct) return 0;
-    const bonus = a.ms <= BATTLE_SPEED_BONUS_WINDOW_MS ? Math.round(50 * (1 - a.ms / BATTLE_SPEED_BONUS_WINDOW_MS)) : 0;
-    return 100 + bonus;
+    return Math.max(BATTLE_MIN_SCORE, Math.round(BATTLE_MAX_SCORE * (1 - a.ms / BATTLE_ROUND_MS)));
   }
   function nextCombo(prevCombo, a) {
-    return (a.correct && a.ms <= BATTLE_SPEED_BONUS_WINDOW_MS) ? prevCombo + 1 : 0;
-  }
-  function comboMult(c) {
-    if (c >= 3) return 3;
-    if (c >= BATTLE_COMBO_BONUS_AT) return 2;
-    return 1;
+    return a.correct ? prevCombo + 1 : 0;
   }
 
-  async function finishBattle(opp, finalScore) {
-    const win = finalScore.you > finalScore.opp;
-    const draw = finalScore.you === finalScore.opp;
+  async function finishBattle(opp, finalScore, opponentForfeited) {
+    liveMatchRef.current = false;
+    const win = opponentForfeited ? true : finalScore.you > finalScore.opp;
+    const draw = !opponentForfeited && finalScore.you === finalScore.opp;
     let mmrDelta = 0, winStreak = mmrInfo.battleWinStreak;
     try {
       if (opp.isBot) {
@@ -2381,14 +2421,14 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite, guestToken, initia
         mmrDelta = r.mmrDelta || 0;
         winStreak = r.battleWinStreak ?? winStreak;
       } else {
-        const r = await authRequest("/battle/finish", "POST", { battleId: battleIdRef.current, myScore: finalScore.you, oppScore: finalScore.opp }, token);
+        const r = await authRequest("/battle/finish", "POST", { battleId: battleIdRef.current, myScore: finalScore.you, oppScore: finalScore.opp, opponentForfeited: !!opponentForfeited }, token);
         mmrDelta = r.mmrDelta || 0;
         winStreak = r.battleWinStreak ?? winStreak;
       }
     } catch { /* leaderboard-style best-effort — battle result still shows locally */ }
     if (cancelledRef.current) return;
     refreshMmr();
-    setFinalResult({ win: draw ? null : win, finalScore, mmrDelta, winStreak });
+    setFinalResult({ win: draw ? null : win, finalScore, mmrDelta, winStreak, opponentForfeited: !!opponentForfeited });
     setPhase("result");
   }
 
@@ -2429,17 +2469,20 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite, guestToken, initia
     }
     const oppAnswer = await oppPromise;
     if (cancelledRef.current) return;
+    if (oppAnswer.opponentForfeited) { finishBattle(opp, scoreNow, true); return; }
 
     const newComboYou = nextCombo(comboNow.you, mine);
     const newComboOpp = nextCombo(comboNow.opp, oppAnswer);
+    const youMult = battleStreakMult(newComboYou);
+    const oppMult = battleStreakMult(newComboOpp);
     const finalRoundMult = idx === roundsArr.length - 1 ? 2 : 1; // last round scores double
-    const youPts = pointsFor(mine) * comboMult(newComboYou) * finalRoundMult;
-    const oppPts = pointsFor(oppAnswer) * comboMult(newComboOpp) * finalRoundMult;
+    const youPts = Math.round(pointsFor(mine) * youMult * finalRoundMult);
+    const oppPts = Math.round(pointsFor(oppAnswer) * oppMult * finalRoundMult);
     const newScore = { you: scoreNow.you + youPts, opp: scoreNow.opp + oppPts };
     const newCombo = { you: newComboYou, opp: newComboOpp };
     setScore(newScore);
     setCombo(newCombo);
-    setReveal({ mineCorrect: mine.correct, oppCorrect: oppAnswer.correct, youPts, oppPts });
+    setReveal({ mineCorrect: mine.correct, oppCorrect: oppAnswer.correct, youPts, oppPts, youMult, oppMult });
     setRoundPhase("reveal");
 
     await sleep(1200 + (mine.correct ? 0 : BATTLE_WRONG_FREEZE_MS));
@@ -2451,6 +2494,7 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite, guestToken, initia
   }
 
   function beginBattle(opp) {
+    liveMatchRef.current = !opp.isBot;
     const roundsArr = battleRoundsFor(opp.seed, opp.wordRank, opp.mode || "en2zh");
     setOpponent(opp);
     setRounds(roundsArr);
@@ -2665,14 +2709,18 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite, guestToken, initia
         </div>
 
         <p className="text-xs font-medium text-[color:var(--text-dim)] mb-2">{isZh ? "语言方向" : "Direction"}</p>
-        <div className="grid grid-cols-2 gap-2 mb-8">
+        <div className="grid grid-cols-1 gap-2 mb-8">
           <button onClick={() => setInviteMode("en2zh")}
             className={`px-3 py-2.5 rounded-lg text-xs font-medium ring-1 transition ${inviteMode === "en2zh" ? "ring-accent-400 bg-accent-500/10 text-[color:var(--accent-text)]" : "ring-[color:var(--border)] text-[color:var(--text-dim)]"}`}>
-            {isZh ? "英文 → 中文" : "English → Chinese"}
+            {isZh ? "英文 → 中文释义" : "English word → Chinese meaning"}
           </button>
           <button onClick={() => setInviteMode("zh2en")}
             className={`px-3 py-2.5 rounded-lg text-xs font-medium ring-1 transition ${inviteMode === "zh2en" ? "ring-accent-400 bg-accent-500/10 text-[color:var(--accent-text)]" : "ring-[color:var(--border)] text-[color:var(--text-dim)]"}`}>
-            {isZh ? "中文 → 英文" : "Chinese → English"}
+            {isZh ? "中文 → 英文单词" : "Chinese meaning → English word"}
+          </button>
+          <button onClick={() => setInviteMode("en2en")}
+            className={`px-3 py-2.5 rounded-lg text-xs font-medium ring-1 transition ${inviteMode === "en2en" ? "ring-accent-400 bg-accent-500/10 text-[color:var(--accent-text)]" : "ring-[color:var(--border)] text-[color:var(--text-dim)]"}`}>
+            {isZh ? "英文 → 英文释义" : "English word → English definition"}
           </button>
         </div>
 
@@ -2765,8 +2813,14 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite, guestToken, initia
             }
             return (
               <button key={i} disabled={roundPhase !== "answering"} onClick={() => chooseAnswer(i)}
-                className={`press-scale text-left px-4 py-3 rounded-lg ring-1 text-sm transition ${cls}`}>
+                className={`relative press-scale text-left px-4 py-3 rounded-lg ring-1 text-sm transition ${cls}`}>
                 {c}
+                {roundPhase === "reveal" && isSelected && reveal && (
+                  <span className={`animate-float-score pointer-events-none absolute left-1/2 -top-2 -translate-x-1/2 whitespace-nowrap text-sm font-bold ${reveal.mineCorrect ? "text-emerald-400" : "text-rose-400"}`}>
+                    {reveal.mineCorrect ? `+${reveal.youPts} pts!` : (isZh ? "未命中" : "Miss")}
+                    {reveal.mineCorrect && reveal.youMult > 1 && <> 🔥 {reveal.youMult}x</>}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -2790,15 +2844,19 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite, guestToken, initia
   }
 
   if (phase === "result" && finalResult) {
-    const { win, finalScore, mmrDelta, winStreak } = finalResult;
+    const { win, finalScore, mmrDelta, winStreak, opponentForfeited } = finalResult;
     const label = win === null ? (isZh ? "平局" : "Draw") : win ? (isZh ? "胜利" : "Victory") : (isZh ? "失败" : "Defeat");
     const tint = win === null ? "text-[color:var(--text)]" : win ? "text-emerald-400" : "text-rose-400";
     return (
       <div className="max-w-md mx-auto px-4 py-16 text-center">
         <p className={`text-3xl font-bold mb-2 ${tint}`}>{label}</p>
-        <p className="text-sm text-[color:var(--text-dim)] mb-1">
-          {isZh ? "你" : "You"} {finalScore.you} — {opponent.username} {finalScore.opp}
-        </p>
+        {opponentForfeited ? (
+          <p className="text-sm text-[color:var(--text-dim)] mb-1">{isZh ? "对方中途退出了对战" : "Your opponent left the battle"}</p>
+        ) : (
+          <p className="text-sm text-[color:var(--text-dim)] mb-1">
+            {isZh ? "你" : "You"} {finalScore.you} — {opponent.username} {finalScore.opp}
+          </p>
+        )}
         {!isGuest && winStreak >= BATTLE_WIN_STREAK_DISPLAY_AT && (
           <p className="text-sm text-orange-400 font-medium mb-1">🔥 {winStreak} {isZh ? "连胜" : "win streak"}{winStreak >= BATTLE_WIN_STREAK_BONUS_AT ? (isZh ? "（+50% 排位加成）" : " (+50% MMR bonus)") : ""}</p>
         )}
