@@ -428,14 +428,19 @@ function shuffleSeeded(arr, rng) {
 // Fixed at 7 rounds, word order picked deterministically from the seed so
 // both clients agree without a round trip. Choices are the Chinese
 // translation (Baicizhan style) rather than the English gloss.
-function battleRoundsFor(seed, rankName) {
+// mode "en2zh" (default): English word prompt, 4 Chinese choices.
+// mode "zh2en": Chinese meaning prompt, 4 English word choices — same word
+// bank, just flipped, so no extra content is needed for the reverse direction.
+function battleRoundsFor(seed, rankName, mode) {
   const bank = BATTLE_WORD_TIERS[rankName] || BATTLE_WORD_TIERS.Bronze;
-  const rng = seededRng(`${seed}:${rankName}`);
+  const rng = seededRng(`${seed}:${rankName}:${mode}`);
   const picked = shuffleSeeded(bank, rng).slice(0, Math.min(BATTLE_ROUNDS, bank.length));
+  const promptOf = mode === "zh2en" ? (w) => w.zh : (w) => w.w;
+  const answerOf = mode === "zh2en" ? (w) => w.w : (w) => w.zh;
   return picked.map((word) => {
     const distractors = shuffleSeeded(bank.filter((w) => w.w !== word.w), rng).slice(0, 3);
-    const choices = shuffleSeeded([word, ...distractors], rng).map((w) => w.zh);
-    return { word: word.w, correct: word.zh, choices };
+    const choices = shuffleSeeded([word, ...distractors], rng).map(answerOf);
+    return { word: promptOf(word), correct: answerOf(word), choices };
   });
 }
 
@@ -2241,9 +2246,10 @@ function BattleScoreBar({ label, score, pct, tint, combo }) {
   );
 }
 
-function BattleView({ uiLang, pendingInvite, onConsumeInvite }) {
+function BattleView({ uiLang, pendingInvite, onConsumeInvite, guestToken, initialBattleId, guestUsername }) {
   const isZh = uiLang === "zh";
-  const token = load(LS.sessionToken, null);
+  const isGuest = !!guestToken;
+  const token = guestToken || load(LS.sessionToken, null);
 
   const [mmrInfo, setMmrInfo] = useState({ battleMMR: 1000, battleWins: 0, battleLosses: 0, battleWinStreak: 0 });
   const refreshMmr = () => {
@@ -2253,11 +2259,13 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite }) {
   };
   useEffect(() => { refreshMmr(); }, []);
 
-  const [phase, setPhase] = useState("menu"); // menu | searching | inviting | joining | battle | result
+  const [phase, setPhase] = useState(initialBattleId ? "joining" : "menu"); // menu | invite-config | searching | inviting | joining | battle | result
   const [searchElapsed, setSearchElapsed] = useState(0);
   const [inviteId, setInviteId] = useState(null);
   const [inviteCopied, setInviteCopied] = useState(false);
   const [inviteError, setInviteError] = useState(null);
+  const [inviteTier, setInviteTier] = useState("auto");
+  const [inviteMode, setInviteMode] = useState("en2zh");
   const [opponent, setOpponent] = useState(null);
   const [rounds, setRounds] = useState([]);
   const [roundIdx, setRoundIdx] = useState(0);
@@ -2284,9 +2292,9 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite }) {
     };
   }, []);
 
-  // Enter through a shared ?battle=<id> link — join it directly instead of
-  // showing the menu. Consumed once so a later re-render / reload doesn't
-  // try to rejoin the same (now-used) invite.
+  // Enter through a shared ?battle=<id> link (already logged in) — join it
+  // directly instead of showing the menu. Consumed once so a later
+  // re-render / reload doesn't try to rejoin the same (now-used) invite.
   useEffect(() => {
     if (!pendingInvite) return;
     const id = pendingInvite;
@@ -2300,7 +2308,7 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite }) {
         if (cancelledRef.current) return;
         beginBattle({
           isBot: false, username: state.opponentUsername,
-          rankName: rankForMmr(state.mmrs.opp).name, wordRank: state.tier, seed: j.battleId,
+          rankName: rankForMmr(state.mmrs.opp).name, wordRank: state.tier, mode: state.mode, seed: j.battleId,
         });
       } catch (e) {
         if (cancelledRef.current) return;
@@ -2309,6 +2317,27 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite }) {
       }
     })();
   }, [pendingInvite]);
+
+  // Guest entry: already joined (and got a battleId) before this component
+  // even mounted, via GuestBattleEntry — just load the room and go.
+  useEffect(() => {
+    if (!initialBattleId) return;
+    (async () => {
+      try {
+        battleIdRef.current = initialBattleId;
+        const state = await authRequest(`/battle/state?battleId=${initialBattleId}`, "GET", null, token);
+        if (cancelledRef.current) return;
+        beginBattle({
+          isBot: false, username: state.opponentUsername,
+          rankName: rankForMmr(state.mmrs.opp).name, wordRank: state.tier, mode: state.mode, seed: initialBattleId,
+        });
+      } catch (e) {
+        if (cancelledRef.current) return;
+        setInviteError(e.message || (isZh ? "加入对战失败。" : "Couldn't join that battle."));
+        setPhase("menu");
+      }
+    })();
+  }, [initialBattleId]);
 
   async function pollOpponentAnswer(idx) {
     const deadline = Date.now() + 15000;
@@ -2422,7 +2451,7 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite }) {
   }
 
   function beginBattle(opp) {
-    const roundsArr = battleRoundsFor(opp.seed, opp.wordRank);
+    const roundsArr = battleRoundsFor(opp.seed, opp.wordRank, opp.mode || "en2zh");
     setOpponent(opp);
     setRounds(roundsArr);
     setScore({ you: 0, opp: 0 });
@@ -2460,7 +2489,7 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite }) {
         const state = await authRequest(`/battle/state?battleId=${matchedId}`, "GET", null, token);
         beginBattle({
           isBot: false, username: state.opponentUsername,
-          rankName: rankForMmr(state.mmrs.opp).name, wordRank: state.tier, seed: matchedId,
+          rankName: rankForMmr(state.mmrs.opp).name, wordRank: state.tier, mode: state.mode, seed: matchedId,
         });
         return;
       } catch { /* couldn't load the matched room — fall back to a bot below */ }
@@ -2470,7 +2499,7 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite }) {
     const myRank = rankForMmr(mmrInfo.battleMMR);
     beginBattle({
       isBot: true, username: isZh ? `AI · ${myRank.zh}` : `Bot · ${myRank.name}`,
-      rankName: myRank.name, wordRank: myRank.name, seed: `bot-${Date.now()}-${Math.random()}`,
+      rankName: myRank.name, wordRank: myRank.name, mode: "en2zh", seed: `bot-${Date.now()}-${Math.random()}`,
     });
   }
 
@@ -2486,7 +2515,9 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite }) {
     setInviteCopied(false);
     let id;
     try {
-      const r = await authRequest("/battle/invite/create", "POST", {}, token);
+      const r = await authRequest("/battle/invite/create", "POST", {
+        tier: inviteTier === "auto" ? null : inviteTier, mode: inviteMode,
+      }, token);
       id = r.inviteId;
     } catch (e) {
       setInviteError(e.message || (isZh ? "创建邀请失败。" : "Couldn't create an invite."));
@@ -2506,7 +2537,7 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite }) {
           if (cancelledRef.current) return;
           beginBattle({
             isBot: false, username: state.opponentUsername,
-            rankName: rankForMmr(state.mmrs.opp).name, wordRank: state.tier, seed: s.battleId,
+            rankName: rankForMmr(state.mmrs.opp).name, wordRank: state.tier, mode: state.mode, seed: s.battleId,
           });
           return;
         }
@@ -2555,25 +2586,27 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite }) {
           </div>
         </header>
 
-        <div className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-5 mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <p className={`text-lg font-semibold ${myRank.text}`}>{isZh ? myRank.zh : myRank.name}</p>
-              <p className="text-xs text-[color:var(--text-faint)]">{mmrInfo.battleMMR} MMR</p>
+        {!isGuest && (
+          <div className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-5 mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className={`text-lg font-semibold ${myRank.text}`}>{isZh ? myRank.zh : myRank.name}</p>
+                <p className="text-xs text-[color:var(--text-faint)]">{mmrInfo.battleMMR} MMR</p>
+              </div>
+              <div className="text-right text-xs text-[color:var(--text-dim)] space-y-0.5">
+                <p>{mmrInfo.battleWins}{isZh ? " 胜" : "W"} · {mmrInfo.battleLosses}{isZh ? " 负" : "L"}</p>
+                {mmrInfo.battleWinStreak >= BATTLE_WIN_STREAK_DISPLAY_AT && (
+                  <p className="text-orange-400 font-medium">🔥 {mmrInfo.battleWinStreak} {isZh ? "连胜" : "streak"}</p>
+                )}
+              </div>
             </div>
-            <div className="text-right text-xs text-[color:var(--text-dim)] space-y-0.5">
-              <p>{mmrInfo.battleWins}{isZh ? " 胜" : "W"} · {mmrInfo.battleLosses}{isZh ? " 负" : "L"}</p>
-              {mmrInfo.battleWinStreak >= BATTLE_WIN_STREAK_DISPLAY_AT && (
-                <p className="text-orange-400 font-medium">🔥 {mmrInfo.battleWinStreak} {isZh ? "连胜" : "streak"}</p>
-              )}
+            <div className="flex gap-1.5">
+              {BATTLE_RANKS.map((r) => (
+                <div key={r.name} className={`flex-1 h-1.5 rounded-full bg-gradient-to-r ${r.grad} ${r.name === myRank.name ? "opacity-100" : "opacity-25"}`} />
+              ))}
             </div>
           </div>
-          <div className="flex gap-1.5">
-            {BATTLE_RANKS.map((r) => (
-              <div key={r.name} className={`flex-1 h-1.5 rounded-full bg-gradient-to-r ${r.grad} ${r.name === myRank.name ? "opacity-100" : "opacity-25"}`} />
-            ))}
-          </div>
-        </div>
+        )}
 
         {inviteError && (
           <div className="mb-4 rounded-lg bg-rose-500/10 ring-1 ring-rose-500/30 px-4 py-2.5 text-sm text-rose-400">
@@ -2581,21 +2614,75 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite }) {
           </div>
         )}
 
-        <div className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-6 text-center">
-          <p className="text-sm text-[color:var(--text-dim)] mb-4">
-            {isZh ? "7 回合，看英文选中文释义，越快答对分越高，连续快答触发连击加成，最后一回合双倍得分！"
-              : "7 rounds — pick the Chinese meaning for each English word. Fast, correct answers score more, chain into combo multipliers, and the final round scores double!"}
+        {isGuest ? (
+          <p className="text-center text-sm text-[color:var(--text-faint)]">
+            {isZh ? "这个邀请链接已失效或已被使用，请向朋友索要一个新链接。" : "This invite link is no longer valid — ask your friend for a new one."}
           </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5">
-            <button onClick={startMatch}
-              className="btn-pulse press-scale px-6 py-3 rounded-xl bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 transition inline-flex items-center gap-2">
-              <Swords size={16} /> {isZh ? "开始对战" : "Find Battle"}
-            </button>
-            <button onClick={startInvite}
-              className="press-scale px-6 py-3 rounded-xl ring-1 ring-[color:var(--border)] text-sm font-semibold text-[color:var(--text)] hover:ring-accent-400/40 transition inline-flex items-center gap-2">
-              <Share2 size={16} /> {isZh ? "分享对战" : "Share Battle"}
-            </button>
+        ) : (
+          <div className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-6 text-center">
+            <p className="text-sm text-[color:var(--text-dim)] mb-4">
+              {isZh ? "7 回合，看英文选中文释义，越快答对分越高，连续快答触发连击加成，最后一回合双倍得分！"
+                : "7 rounds — pick the Chinese meaning for each English word. Fast, correct answers score more, chain into combo multipliers, and the final round scores double!"}
+            </p>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5">
+              <button onClick={startMatch}
+                className="btn-pulse press-scale px-6 py-3 rounded-xl bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 transition inline-flex items-center gap-2">
+                <Swords size={16} /> {isZh ? "开始对战" : "Find Battle"}
+              </button>
+              <button onClick={() => { setInviteError(null); setPhase("invite-config"); }}
+                className="press-scale px-6 py-3 rounded-xl ring-1 ring-[color:var(--border)] text-sm font-semibold text-[color:var(--text)] hover:ring-accent-400/40 transition inline-flex items-center gap-2">
+                <Share2 size={16} /> {isZh ? "分享对战" : "Share Battle"}
+              </button>
+            </div>
+            <p className="text-xs text-[color:var(--text-faint)] mt-3">
+              {isZh ? "开始对战：按你的段位自动匹配。分享对战：邀请好友，自选难度和语言方向，对方无需注册。"
+                : "Find Battle matches your own rank. Share Battle invites a friend directly — you choose the difficulty and direction, and they don't need an account."}
+            </p>
           </div>
+        )}
+      </div>
+    );
+  }
+
+  if (phase === "invite-config") {
+    return (
+      <div className="max-w-md mx-auto px-4 py-16">
+        <h3 className="text-lg font-semibold text-[color:var(--text)] mb-1 text-center">{isZh ? "分享对战设置" : "Share Battle Settings"}</h3>
+        <p className="text-xs text-[color:var(--text-faint)] text-center mb-6">{isZh ? "为你和朋友的对战选择难度和方向" : "Pick a difficulty and direction for you and your friend"}</p>
+
+        <p className="text-xs font-medium text-[color:var(--text-dim)] mb-2">{isZh ? "难度" : "Difficulty"}</p>
+        <div className="grid grid-cols-3 gap-2 mb-5">
+          <button onClick={() => setInviteTier("auto")}
+            className={`px-3 py-2 rounded-lg text-xs font-medium ring-1 transition ${inviteTier === "auto" ? "ring-accent-400 bg-accent-500/10 text-[color:var(--accent-text)]" : "ring-[color:var(--border)] text-[color:var(--text-dim)]"}`}>
+            {isZh ? "自动（你的段位）" : "Auto (your rank)"}
+          </button>
+          {BATTLE_RANKS.map((r) => (
+            <button key={r.name} onClick={() => setInviteTier(r.name)}
+              className={`px-3 py-2 rounded-lg text-xs font-medium ring-1 transition ${inviteTier === r.name ? "ring-accent-400 bg-accent-500/10 text-[color:var(--accent-text)]" : "ring-[color:var(--border)] text-[color:var(--text-dim)]"}`}>
+              {isZh ? r.zh : r.name}
+            </button>
+          ))}
+        </div>
+
+        <p className="text-xs font-medium text-[color:var(--text-dim)] mb-2">{isZh ? "语言方向" : "Direction"}</p>
+        <div className="grid grid-cols-2 gap-2 mb-8">
+          <button onClick={() => setInviteMode("en2zh")}
+            className={`px-3 py-2.5 rounded-lg text-xs font-medium ring-1 transition ${inviteMode === "en2zh" ? "ring-accent-400 bg-accent-500/10 text-[color:var(--accent-text)]" : "ring-[color:var(--border)] text-[color:var(--text-dim)]"}`}>
+            {isZh ? "英文 → 中文" : "English → Chinese"}
+          </button>
+          <button onClick={() => setInviteMode("zh2en")}
+            className={`px-3 py-2.5 rounded-lg text-xs font-medium ring-1 transition ${inviteMode === "zh2en" ? "ring-accent-400 bg-accent-500/10 text-[color:var(--accent-text)]" : "ring-[color:var(--border)] text-[color:var(--text-dim)]"}`}>
+            {isZh ? "中文 → 英文" : "Chinese → English"}
+          </button>
+        </div>
+
+        <div className="flex gap-2.5">
+          <button onClick={() => setPhase("menu")} className="flex-1 press-scale px-4 py-2.5 rounded-xl ring-1 ring-[color:var(--border)] text-sm text-[color:var(--text-dim)] hover:text-[color:var(--text)]">
+            {isZh ? "返回" : "Back"}
+          </button>
+          <button onClick={startInvite} className="flex-1 btn-pulse press-scale px-4 py-2.5 rounded-xl bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 transition inline-flex items-center justify-center gap-2">
+            <Share2 size={16} /> {isZh ? "创建链接" : "Create Link"}
+          </button>
         </div>
       </div>
     );
@@ -2712,16 +2799,22 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite }) {
         <p className="text-sm text-[color:var(--text-dim)] mb-1">
           {isZh ? "你" : "You"} {finalScore.you} — {opponent.username} {finalScore.opp}
         </p>
-        {winStreak >= BATTLE_WIN_STREAK_DISPLAY_AT && (
+        {!isGuest && winStreak >= BATTLE_WIN_STREAK_DISPLAY_AT && (
           <p className="text-sm text-orange-400 font-medium mb-1">🔥 {winStreak} {isZh ? "连胜" : "win streak"}{winStreak >= BATTLE_WIN_STREAK_BONUS_AT ? (isZh ? "（+50% 排位加成）" : " (+50% MMR bonus)") : ""}</p>
         )}
-        <p className={`text-sm font-medium mb-8 ${mmrDelta > 0 ? "text-emerald-400" : mmrDelta < 0 ? "text-rose-400" : "text-[color:var(--text-faint)]"}`}>
-          {mmrDelta > 0 ? `+${mmrDelta}` : mmrDelta} MMR → {mmrInfo.battleMMR} ({isZh ? rankForMmr(mmrInfo.battleMMR).zh : rankForMmr(mmrInfo.battleMMR).name})
-        </p>
-        <button onClick={() => setPhase("menu")}
-          className="btn-pulse press-scale px-6 py-3 rounded-xl bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 transition inline-flex items-center gap-2">
-          <Swords size={16} /> {isZh ? "再来一局" : "Battle Again"}
-        </button>
+        {!isGuest && (
+          <p className={`text-sm font-medium mb-8 ${mmrDelta > 0 ? "text-emerald-400" : mmrDelta < 0 ? "text-rose-400" : "text-[color:var(--text-faint)]"}`}>
+            {mmrDelta > 0 ? `+${mmrDelta}` : mmrDelta} MMR → {mmrInfo.battleMMR} ({isZh ? rankForMmr(mmrInfo.battleMMR).zh : rankForMmr(mmrInfo.battleMMR).name})
+          </p>
+        )}
+        {isGuest ? (
+          <p className="text-sm text-[color:var(--text-faint)] mt-4">{isZh ? "感谢参战！这是一次性链接 — 请对方再发一个新链接即可再战。" : "Thanks for playing! That link was one-time use — ask for a fresh one to battle again."}</p>
+        ) : (
+          <button onClick={() => setPhase("menu")}
+            className="btn-pulse press-scale px-6 py-3 rounded-xl bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 transition inline-flex items-center gap-2">
+            <Swords size={16} /> {isZh ? "再来一局" : "Battle Again"}
+          </button>
+        )}
       </div>
     );
   }
@@ -5707,9 +5800,78 @@ function KeyModal({ onClose, onGo }) {
   );
 }
 
+// Lets someone open a shared battle link play without creating an account —
+// they just pick a display name, which mints a short-lived guest session
+// (see /battle/guest-join) scoped to that one battle.
+function GuestBattleEntry({ inviteId }) {
+  const uiLang = navigator.language?.startsWith("zh") ? "zh" : "en";
+  const isZh = uiLang === "zh";
+  const [username, setUsername] = useState("");
+  const [joined, setJoined] = useState(null);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const theme = load(LS.theme, "dark");
+    const eff = theme === "system" ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : theme;
+    document.documentElement.setAttribute("data-theme", eff);
+  }, []);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!username.trim() || loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await authRequest("/battle/guest-join", "POST", { inviteId, username }, null);
+      setJoined(r);
+    } catch (err) {
+      setError(err.message || (isZh ? "加入失败，链接可能已失效。" : "Couldn't join — the link may be invalid or already used."));
+    }
+    setLoading(false);
+  };
+
+  if (joined) {
+    return (
+      <div className="min-h-screen w-full bg-[color:var(--bg)] text-[color:var(--text)] font-sans" style={{ fontFamily: "'Inter', ui-sans-serif, system-ui" }}>
+        <BattleView uiLang={uiLang} guestToken={joined.token} initialBattleId={joined.battleId} guestUsername={joined.username} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen w-full flex items-center justify-center bg-[color:var(--bg)] px-6"
+      style={{ fontFamily: "'Inter', ui-sans-serif, system-ui" }}>
+      <form onSubmit={submit} className="w-full max-w-sm">
+        <div className="flex flex-col items-center mb-8">
+          <img src="assets/icon-192.png" alt="Vooca" className="h-12 w-12 rounded-2xl shadow-sm mb-3" />
+          <h1 className="text-lg font-semibold text-[color:var(--text)]">{isZh ? "加入词汇对战" : "Join the Battle"}</h1>
+          <p className="text-xs text-[color:var(--text-dim)] mt-0.5">{isZh ? "无需注册，输入昵称即可开始" : "No account needed — just pick a name"}</p>
+        </div>
+        {error && (
+          <div className="mb-4 rounded-lg bg-rose-500/10 ring-1 ring-rose-500/30 px-4 py-2.5 text-sm text-rose-400">{error}</div>
+        )}
+        <input value={username} onChange={(e) => setUsername(e.target.value)} maxLength={24} autoFocus
+          placeholder={isZh ? "你的昵称" : "Your name"}
+          className="w-full px-4 py-3 rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] text-sm text-[color:var(--text)] mb-3 outline-none focus:ring-accent-400/50" />
+        <button type="submit" disabled={loading || !username.trim()}
+          className="w-full press-scale px-4 py-3 rounded-xl bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 transition disabled:opacity-50 inline-flex items-center justify-center gap-2">
+          {loading ? <Loader2 size={16} className="animate-spin" /> : <Swords size={16} />} {isZh ? "加入对战" : "Join Battle"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 function Root() {
   const [authed, setAuthed] = useState(() => load(LS.loggedIn, false));
   CURRENT_EMAIL = load(LS.currentEmail, null);
+  // A shared battle link (?battle=<id>) opened by someone without an
+  // account skips login entirely and goes straight to the guest-name gate;
+  // an already-logged-in user keeps going through the normal App flow,
+  // which has its own pendingInvite handling for the same query param.
+  const battleInviteId = new URLSearchParams(location.search).get("battle");
+  const skipAuthForGuest = battleInviteId && (!authed || !CURRENT_EMAIL);
 
   const doLogout = () => {
     save(LS.loggedIn, false);
@@ -5737,6 +5899,7 @@ function Root() {
     return () => { cancelled = true; };
   }, [authed]);
 
+  if (skipAuthForGuest) return <GuestBattleEntry inviteId={battleInviteId} />;
   if (!authed || !CURRENT_EMAIL) return <AuthGate onAuth={() => setAuthed(true)} />;
   return <App key={CURRENT_EMAIL} onLogout={doLogout} />;
 }
