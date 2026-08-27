@@ -149,6 +149,7 @@ const Flame = (p) => <Icon {...p} path='<path d="M8.5 14.5A2.5 2.5 0 0 0 11 17a2
 const BookOpen = (p) => <Icon {...p} path='<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2Z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7Z"/>' />;
 const Trophy = (p) => <Icon {...p} path='<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0Z"/><path d="M17 5h3a3 3 0 0 1-3 5M7 5H4a3 3 0 0 0 3 5"/>' />;
 const Swords = (p) => <Icon {...p} path='<polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" y1="19" x2="19" y2="13"/><line x1="16" y1="16" x2="20" y2="20"/><line x1="19" y1="21" x2="21" y2="19"/><polyline points="9.5 6.5 21 18 21 21 18 21 6.5 9.5"/><line x1="5" y1="14" x2="9" y2="18"/><line x1="4" y1="17" x2="7" y2="20"/><line x1="3" y1="19" x2="5" y2="21"/>' />;
+const Share2 = (p) => <Icon {...p} path='<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="10.5" x2="15.4" y2="6.5"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/>' />;
 const Copy = (p) => <Icon {...p} path='<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>' />;
 const UserCircle = (p) => <Icon {...p} path='<circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M6.5 19a5.5 5.5 0 0 1 11 0"/>' />;
 const Globe = (p) => <Icon {...p} path='<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20Z"/>' />;
@@ -319,6 +320,7 @@ const VOCAB_TEST_FAKES = ["glimmerate", "trepidous", "fluxenary", "consolute", "
  * math (A1..C2, "pool: 1000..20000") and touching it would drift that
  * feature's calibration; battle ranks need their own difficulty curve and a
  * 6th (Challenger) band the size test doesn't have. */
+const BATTLE_ROUNDS = 7;
 const BATTLE_ROUND_MS = 8000;
 const BATTLE_QUEUE_TIMEOUT_MS = 5000;
 const BATTLE_SPEED_BONUS_WINDOW_MS = 1500;
@@ -424,14 +426,13 @@ function shuffleSeeded(arr, rng) {
   }
   return a;
 }
-// Rounds are 5-7, picked deterministically from the seed so both clients
-// agree without a round trip. Choices are the Chinese translation (Baicizhan
-// style) rather than the English gloss.
+// Fixed at 7 rounds, word order picked deterministically from the seed so
+// both clients agree without a round trip. Choices are the Chinese
+// translation (Baicizhan style) rather than the English gloss.
 function battleRoundsFor(seed, rankName) {
   const bank = BATTLE_WORD_TIERS[rankName] || BATTLE_WORD_TIERS.Bronze;
   const rng = seededRng(`${seed}:${rankName}`);
-  const count = 5 + Math.floor(rng() * 3);
-  const picked = shuffleSeeded(bank, rng).slice(0, Math.min(count, bank.length));
+  const picked = shuffleSeeded(bank, rng).slice(0, Math.min(BATTLE_ROUNDS, bank.length));
   return picked.map((word) => {
     const distractors = shuffleSeeded(bank.filter((w) => w.w !== word.w), rng).slice(0, 3);
     const choices = shuffleSeeded([word, ...distractors], rng).map((w) => w.zh);
@@ -1040,7 +1041,10 @@ function AuthGate({ onAuth }) {
 
 /* ---------------- App ---------------- */
 function App({ onLogout }) {
-  const [view, setView] = useState("dashboard");
+  // A shared battle link looks like ?battle=<id> — land straight on Battle
+  // (instead of the default Dashboard) so the invite can auto-join.
+  const [pendingInvite, setPendingInvite] = useState(() => new URLSearchParams(location.search).get("battle"));
+  const [view, setView] = useState(() => (pendingInvite ? "battle" : "dashboard"));
   const [provider, setProvider] = useState(() => load(nsKey("provider"), DEFAULT_PROVIDER));
   const [providerKeys, setProviderKeys] = useState(() => {
     const stored = load(nsKey("providerKeys"), null);
@@ -1293,12 +1297,12 @@ function App({ onLogout }) {
       style={{ fontFamily: "'Inter', ui-sans-serif, system-ui" }}>
 
       <div className="md:hidden fixed top-0 inset-x-0 z-30 h-14 flex items-center justify-between px-4 bg-[color:var(--surface2)] border-b border-[color:var(--border)]">
-        <div className="flex items-center gap-2">
+        <button onClick={() => { location.href = location.pathname; }} className="flex items-center gap-2 press-scale">
           <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 flex items-center justify-center shadow-sm shadow-violet-500/30">
             <BrandMark size={15} className="text-white" />
           </div>
           <h1 className="text-sm font-semibold text-[color:var(--text)]">Vooca</h1>
-        </div>
+        </button>
         <button onClick={() => setMobileNavOpen(true)} className="p-2 -mr-2 text-[color:var(--text-dim)]">
           <Menu size={20} />
         </button>
@@ -1311,7 +1315,7 @@ function App({ onLogout }) {
       <aside className={`w-64 md:w-60 shrink-0 border-r border-[color:var(--border)] bg-[color:var(--surface2)] flex flex-col fixed md:static inset-y-0 left-0 z-50 transition-transform duration-200 ${
         mobileNavOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}>
         <div className="px-5 py-6 border-b border-[color:var(--border)] flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
+          <button onClick={() => { location.href = location.pathname; }} className="flex items-center gap-2.5 press-scale text-left">
             <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 flex items-center justify-center shadow-sm shadow-violet-500/30">
               <BrandMark size={18} className="text-white" />
             </div>
@@ -1319,7 +1323,7 @@ function App({ onLogout }) {
               <h1 className="text-sm font-semibold tracking-tight text-[color:var(--text)] leading-tight">Vooca</h1>
               <p className="text-[11px] text-[color:var(--text-dim)] tracking-wide">Learn it. Own it.</p>
             </div>
-          </div>
+          </button>
           <button onClick={() => setMobileNavOpen(false)} className="md:hidden p-1 text-[color:var(--text-faint)]">
             <X size={18} />
           </button>
@@ -1390,7 +1394,7 @@ function App({ onLogout }) {
               <Sandbox {...{ words: activeList.words.filter((w) => w.learnedOn === todayStr()), apiKey, model, provider, setStats, registerActivity, promptKey: () => setShowKeyModal(true) }} />
             )}
             {view === "battle" && (
-              <BattleView uiLang={uiLang} />
+              <BattleView uiLang={uiLang} pendingInvite={pendingInvite} onConsumeInvite={() => { setPendingInvite(null); history.replaceState(null, "", location.pathname); }} />
             )}
             {view === "leaderboard" && (
               <LeaderboardView {...{ profile, setProfile, uiLang, setVocabTestResult, onCreateList: createPersonalizedList, leaderboardUserId, liveStats: { totalLearned: effectiveTotalLearned, totalMastered: effectiveTotalMastered, vocabSize: effectiveVocabSize, streak: effectiveStreak, points } }} />
@@ -2244,7 +2248,7 @@ function BattleScoreBar({ label, score, pct, tint, combo }) {
   );
 }
 
-function BattleView({ uiLang }) {
+function BattleView({ uiLang, pendingInvite, onConsumeInvite }) {
   const isZh = uiLang === "zh";
   const token = load(LS.sessionToken, null);
 
@@ -2256,8 +2260,11 @@ function BattleView({ uiLang }) {
   };
   useEffect(() => { refreshMmr(); }, []);
 
-  const [phase, setPhase] = useState("menu"); // menu | searching | battle | result
+  const [phase, setPhase] = useState("menu"); // menu | searching | inviting | joining | battle | result
   const [searchElapsed, setSearchElapsed] = useState(0);
+  const [inviteId, setInviteId] = useState(null);
+  const [inviteCopied, setInviteCopied] = useState(false);
+  const [inviteError, setInviteError] = useState(null);
   const [opponent, setOpponent] = useState(null);
   const [rounds, setRounds] = useState([]);
   const [roundIdx, setRoundIdx] = useState(0);
@@ -2283,6 +2290,32 @@ function BattleView({ uiLang }) {
       authRequest("/battle/leave", "POST", {}, token).catch(() => {});
     };
   }, []);
+
+  // Enter through a shared ?battle=<id> link — join it directly instead of
+  // showing the menu. Consumed once so a later re-render / reload doesn't
+  // try to rejoin the same (now-used) invite.
+  useEffect(() => {
+    if (!pendingInvite) return;
+    const id = pendingInvite;
+    onConsumeInvite();
+    (async () => {
+      setPhase("joining");
+      try {
+        const j = await authRequest("/battle/invite/join", "POST", { inviteId: id }, token);
+        battleIdRef.current = j.battleId;
+        const state = await authRequest(`/battle/state?battleId=${j.battleId}`, "GET", null, token);
+        if (cancelledRef.current) return;
+        beginBattle({
+          isBot: false, username: state.opponentUsername,
+          rankName: rankForMmr(state.mmrs.opp).name, wordRank: state.tier, seed: j.battleId,
+        });
+      } catch (e) {
+        if (cancelledRef.current) return;
+        setInviteError(e.message || (isZh ? "加入对战失败。" : "Couldn't join that battle."));
+        setPhase("menu");
+      }
+    })();
+  }, [pendingInvite]);
 
   async function pollOpponentAnswer(idx) {
     const deadline = Date.now() + 15000;
@@ -2377,8 +2410,9 @@ function BattleView({ uiLang }) {
 
     const newComboYou = nextCombo(comboNow.you, mine);
     const newComboOpp = nextCombo(comboNow.opp, oppAnswer);
-    const youPts = pointsFor(mine) * comboMult(newComboYou);
-    const oppPts = pointsFor(oppAnswer) * comboMult(newComboOpp);
+    const finalRoundMult = idx === roundsArr.length - 1 ? 2 : 1; // last round scores double
+    const youPts = pointsFor(mine) * comboMult(newComboYou) * finalRoundMult;
+    const oppPts = pointsFor(oppAnswer) * comboMult(newComboOpp) * finalRoundMult;
     const newScore = { you: scoreNow.you + youPts, opp: scoreNow.opp + oppPts };
     const newCombo = { you: newComboYou, opp: newComboOpp };
     setScore(newScore);
@@ -2453,6 +2487,57 @@ function BattleView({ uiLang }) {
     setPhase("menu");
   }
 
+  async function startInvite() {
+    cancelledRef.current = false;
+    setInviteError(null);
+    setInviteCopied(false);
+    let id;
+    try {
+      const r = await authRequest("/battle/invite/create", "POST", {}, token);
+      id = r.inviteId;
+    } catch (e) {
+      setInviteError(e.message || (isZh ? "创建邀请失败。" : "Couldn't create an invite."));
+      return;
+    }
+    setInviteId(id);
+    setPhase("inviting");
+
+    while (!cancelledRef.current) {
+      await sleep(1500);
+      if (cancelledRef.current) return;
+      try {
+        const s = await authRequest(`/battle/invite/status?id=${id}`, "GET", null, token);
+        if (s.battleId) {
+          battleIdRef.current = s.battleId;
+          const state = await authRequest(`/battle/state?battleId=${s.battleId}`, "GET", null, token);
+          if (cancelledRef.current) return;
+          beginBattle({
+            isBot: false, username: state.opponentUsername,
+            rankName: rankForMmr(state.mmrs.opp).name, wordRank: state.tier, seed: s.battleId,
+          });
+          return;
+        }
+      } catch { /* invite may have expired — keep polling until the user cancels */ }
+    }
+  }
+
+  function cancelInvite() {
+    cancelledRef.current = true;
+    setInviteId(null);
+    setPhase("menu");
+  }
+
+  function inviteUrl(id) {
+    return `${location.origin}${location.pathname}?battle=${id}`;
+  }
+
+  function copyInviteLink() {
+    navigator.clipboard?.writeText(inviteUrl(inviteId)).then(() => {
+      setInviteCopied(true);
+      setTimeout(() => setInviteCopied(false), 2000);
+    }).catch(() => {});
+  }
+
   function chooseAnswer(i) {
     if (roundPhase !== "answering" || !answerResolverRef.current) return;
     const roundData = rounds[roundIdx];
@@ -2497,15 +2582,27 @@ function BattleView({ uiLang }) {
           </div>
         </div>
 
+        {inviteError && (
+          <div className="mb-4 rounded-lg bg-rose-500/10 ring-1 ring-rose-500/30 px-4 py-2.5 text-sm text-rose-400">
+            {inviteError}
+          </div>
+        )}
+
         <div className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-6 text-center">
           <p className="text-sm text-[color:var(--text-dim)] mb-4">
-            {isZh ? "5-7 回合，看英文选中文释义，越快答对分越高，连续快答触发连击加成。"
-              : "5-7 rounds — pick the Chinese meaning for each English word. Fast, correct answers score more and chain into combo multipliers."}
+            {isZh ? "7 回合，看英文选中文释义，越快答对分越高，连续快答触发连击加成，最后一回合双倍得分！"
+              : "7 rounds — pick the Chinese meaning for each English word. Fast, correct answers score more, chain into combo multipliers, and the final round scores double!"}
           </p>
-          <button onClick={startMatch}
-            className="btn-pulse press-scale px-6 py-3 rounded-xl bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 transition inline-flex items-center gap-2">
-            <Swords size={16} /> {isZh ? "开始对战" : "Find Battle"}
-          </button>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5">
+            <button onClick={startMatch}
+              className="btn-pulse press-scale px-6 py-3 rounded-xl bg-accent-500 text-[#0a0e14] text-sm font-semibold hover:bg-accent-400 transition inline-flex items-center gap-2">
+              <Swords size={16} /> {isZh ? "开始对战" : "Find Battle"}
+            </button>
+            <button onClick={startInvite}
+              className="press-scale px-6 py-3 rounded-xl ring-1 ring-[color:var(--border)] text-sm font-semibold text-[color:var(--text)] hover:ring-accent-400/40 transition inline-flex items-center gap-2">
+              <Share2 size={16} /> {isZh ? "分享对战" : "Share Battle"}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -2523,6 +2620,36 @@ function BattleView({ uiLang }) {
     );
   }
 
+  if (phase === "joining") {
+    return (
+      <div className="max-w-md mx-auto px-4 py-16 text-center">
+        <Loader2 size={28} className="animate-spin text-[color:var(--accent-text)] mx-auto mb-4" />
+        <p className="text-sm font-medium text-[color:var(--text)]">{isZh ? "正在加入对战…" : "Joining battle…"}</p>
+      </div>
+    );
+  }
+
+  if (phase === "inviting") {
+    return (
+      <div className="max-w-md mx-auto px-4 py-16 text-center">
+        <Loader2 size={28} className="animate-spin text-[color:var(--accent-text)] mx-auto mb-4" />
+        <p className="text-sm font-medium text-[color:var(--text)] mb-1">{isZh ? "等待对方加入…" : "Waiting for someone to join…"}</p>
+        <p className="text-xs text-[color:var(--text-faint)] mb-5">{isZh ? "把链接发给对方，链接 10 分钟内有效" : "Send them the link below — it's valid for 10 minutes"}</p>
+        <div className="flex items-center gap-2 mb-6">
+          <input readOnly value={inviteUrl(inviteId)} onFocus={(e) => e.target.select()}
+            className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] text-xs text-[color:var(--text-dim)] font-mono" />
+          <button onClick={copyInviteLink}
+            className="press-scale shrink-0 px-3 py-2 rounded-lg bg-accent-500 text-[#0a0e14] text-xs font-semibold hover:bg-accent-400 transition inline-flex items-center gap-1.5">
+            <Copy size={13} /> {inviteCopied ? (isZh ? "已复制" : "Copied") : (isZh ? "复制" : "Copy")}
+          </button>
+        </div>
+        <button onClick={cancelInvite} className="press-scale px-4 py-2 rounded-lg ring-1 ring-[color:var(--border)] text-sm text-[color:var(--text-dim)] hover:text-[color:var(--text)]">
+          {isZh ? "取消" : "Cancel"}
+        </button>
+      </div>
+    );
+  }
+
   if (phase === "battle") {
     const roundData = rounds[roundIdx];
     if (!roundData) return null;
@@ -2531,7 +2658,12 @@ function BattleView({ uiLang }) {
       <div className="max-w-2xl mx-auto px-4 sm:px-8 py-6 sm:py-10">
         <div className="flex items-center gap-4 mb-6">
           <BattleScoreBar label={isZh ? "你" : "You"} score={score.you} pct={(score.you / maxScore) * 100} combo={combo.you} tint="from-emerald-400 to-emerald-500" />
-          <span className="text-xs text-[color:var(--text-faint)] shrink-0">{isZh ? "回合" : "Round"} {roundIdx + 1}/{rounds.length}</span>
+          <span className="text-xs text-[color:var(--text-faint)] shrink-0 flex flex-col items-center gap-0.5">
+            <span>{isZh ? "回合" : "Round"} {roundIdx + 1}/{rounds.length}</span>
+            {roundIdx === rounds.length - 1 && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-rose-500/20 text-rose-400">{isZh ? "双倍" : "×2"}</span>
+            )}
+          </span>
           <BattleScoreBar label={opponent.username} score={score.opp} pct={(score.opp / maxScore) * 100} combo={combo.opp} tint="from-rose-400 to-rose-500" />
         </div>
 
