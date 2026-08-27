@@ -2382,6 +2382,7 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite, guestToken, initia
   const [rounds, setRounds] = useState([]);
   const [roundIdx, setRoundIdx] = useState(0);
   const [roundPhase, setRoundPhase] = useState("answering"); // answering | waiting | reveal
+  const [timeLeftMs, setTimeLeftMs] = useState(BATTLE_ROUND_MS);
   const [selected, setSelected] = useState(null);
   const [score, setScore] = useState({ you: 0, opp: 0 });
   const [combo, setCombo] = useState({ you: 0, opp: 0 });
@@ -2482,6 +2483,17 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite, guestToken, initia
       } catch { /* no pending battle — normal case, just show the menu */ }
     })();
   }, []);
+
+  // Live countdown display for the answering phase — purely visual, the
+  // actual round timeout is still driven by autoSubmitTimerRef.
+  useEffect(() => {
+    if (roundPhase !== "answering") return;
+    setTimeLeftMs(BATTLE_ROUND_MS);
+    const iv = setInterval(() => {
+      setTimeLeftMs(Math.max(0, BATTLE_ROUND_MS - (Date.now() - roundStartRef.current)));
+    }, 100);
+    return () => clearInterval(iv);
+  }, [roundPhase, roundIdx]);
 
   async function pollOpponentAnswer(idx) {
     const deadline = Date.now() + 15000;
@@ -2900,6 +2912,21 @@ function BattleView({ uiLang, pendingInvite, onConsumeInvite, guestToken, initia
         <div className="rounded-xl bg-[color:var(--surface)] ring-1 ring-[color:var(--border)] p-6 sm:p-8 text-center mb-5">
           <p className="text-3xl font-semibold text-[color:var(--text)]">{roundData.word}</p>
         </div>
+
+        {roundPhase === "answering" && (
+          <div className="mb-5">
+            <div className="flex items-center justify-center gap-1.5 mb-1.5">
+              <Clock size={13} className={timeLeftMs <= 3000 ? "text-rose-400" : "text-[color:var(--text-faint)]"} />
+              <span className={`text-sm font-semibold tabular-nums ${timeLeftMs <= 3000 ? "text-rose-400" : "text-[color:var(--text-dim)]"}`}>
+                {(timeLeftMs / 1000).toFixed(1)}s
+              </span>
+            </div>
+            <div className="h-1.5 rounded-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] overflow-hidden">
+              <div className={`h-full rounded-full transition-[width] duration-100 linear ${timeLeftMs <= 3000 ? "bg-rose-400" : "bg-accent-500"}`}
+                style={{ width: `${Math.max(0, Math.min(100, (timeLeftMs / BATTLE_ROUND_MS) * 100))}%` }} />
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 gap-2.5">
           {roundData.choices.map((c, i) => {
