@@ -1279,7 +1279,11 @@ function App({ onLogout }) {
       if (cancelled) return;
       let aiResults = {};
       if (apiKey) {
-        const stillMissing = candidates.filter((w) => !results[w.word.trim().toLowerCase()]).slice(0, 10);
+        // Route to AI whenever the free dictionary came up short of a full
+        // set of 3 (not just when it found nothing) — otherwise a word with
+        // one real-but-unstructured quote would keep that instead of ever
+        // getting the deliberately-varied 3-sentence set.
+        const stillMissing = candidates.filter((w) => (results[w.word.trim().toLowerCase()]?.length || 0) < 3).slice(0, 25);
         if (stillMissing.length) aiResults = await fetchAiExamplesBatch(stillMissing, apiKey, model, provider).catch(() => ({}));
       }
       if (cancelled) return;
@@ -1288,7 +1292,9 @@ function App({ onLogout }) {
         words: l.words.map((w) => {
           if (!candidates.some((c) => c.id === w.id)) return w;
           const key = w.word.trim().toLowerCase();
-          return { ...w, examples: results[key] || aiResults[key] || [] };
+          // AI's full 3-sentence set wins over a partial free-dictionary
+          // result when both exist.
+          return { ...w, examples: aiResults[key] || results[key] || [] };
         }),
       }));
     })();
@@ -3701,7 +3707,7 @@ async function fetchAiExamplesBatch(words, apiKey, model, provider) {
 Give an accurate, natural Chinese translation for each sentence. Return ONLY valid JSON (no markdown, no preamble): an array with one object per word, same order: [{"word": string, "examples": [{"en": string, "cn": string}, {"en": string, "cn": string}, {"en": string, "cn": string}]}]`;
   const userText = words.map((w) => `${w.word} (${w.vibe || "formal"})`).join("\n");
   try {
-    const raw = await callAI({ provider, apiKey, model, system, userText, maxTokens: Math.min(6000, words.length * 260) });
+    const raw = await callAI({ provider, apiKey, model, system, userText, maxTokens: Math.min(12000, words.length * 320) });
     const parsed = extractJsonArray(raw);
     const out = {};
     if (Array.isArray(parsed)) {
