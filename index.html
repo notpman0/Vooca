@@ -4918,8 +4918,8 @@ function LearnCard({ word, style, revealed, onReveal, uiLang }) {
         <h3 className="text-4xl font-bold text-[color:var(--text)] mb-3 inline-flex items-center gap-2">{word.word}<AudioPronunciationButton word={word.word} size={18} /></h3>
         <p className="text-lg text-[color:var(--text)] mb-4 leading-relaxed">{displayDef}</p>
         <div className="space-y-2 mb-4">
-          {examples.slice(0, 2).map((s, i) => (
-            <p key={i} className="text-sm text-[color:var(--text-dim)] italic leading-relaxed">{s}</p>
+          {examples.slice(0, 2).map((ex, i) => (
+            <p key={i} className="text-sm text-[color:var(--text-dim)] italic leading-relaxed">{ex.en}</p>
           ))}
         </div>
         {coll.length > 0 && (
@@ -5162,10 +5162,13 @@ function MemorizeSession({ list, pool, updateList, setStats, registerActivity, o
                 <div>
                   <p className="text-[10px] uppercase tracking-wide text-[color:var(--text-faint)] mb-1.5">例句 · Examples</p>
                   <div className="space-y-2">
-                    {examples.slice(0, 3).map((s, i) => (
-                      <div key={i} className="flex items-start gap-1.5">
-                        <p className="flex-1 text-sm text-[color:var(--text-dim)] italic leading-relaxed">{highlightWord(s)}</p>
-                        <AudioPronunciationButton word={s} size={12} className="shrink-0 mt-0.5" />
+                    {examples.slice(0, 3).map((ex, i) => (
+                      <div key={i} className="flex flex-col gap-0.5">
+                        <div className="flex items-start gap-1.5">
+                          <p className="flex-1 text-sm text-[color:var(--text-dim)] italic leading-relaxed">{highlightWord(ex.en)}</p>
+                          <AudioPronunciationButton word={ex.en} size={12} className="shrink-0 mt-0.5" />
+                        </div>
+                        {ex.cn && <p className="text-xs text-[color:var(--text-faint)] leading-relaxed">{ex.cn}</p>}
                       </div>
                     ))}
                   </div>
