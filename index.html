@@ -964,7 +964,7 @@ function AuthGate({ onAuth }) {
             <form onSubmit={submitLogin} className="space-y-3">
               <div>
                 <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Username or email</label>
-                <input value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="ada or ada@example.com"
+                <input value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="bob or bob@example.com"
                   className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
               </div>
               <div>
@@ -990,7 +990,7 @@ function AuthGate({ onAuth }) {
             <form onSubmit={submitRegister} className="space-y-3">
               <div>
                 <label className="block text-xs text-[color:var(--text-dim)] mb-1.5">Username</label>
-                <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="ada"
+                <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="bob"
                   className="w-full bg-[color:var(--surface2)] ring-1 ring-[color:var(--border)] rounded-lg px-3 py-2.5 text-sm text-[color:var(--text)] focus:outline-none focus:ring-accent-500/50" />
               </div>
               <div>
